@@ -66,7 +66,9 @@ Clique em **Save** e depois **Deploy** de novo pra aplicar.
 
 ### A.4. Persistência de dados (crítico — não pule isso)
 
-Sem isso, **todo novo deploy apaga sua sessão do WhatsApp, seus leads e suas configurações**. Na
+**É isto que faz o token do Apify e a sessão do WhatsApp sobreviverem a um deploy.** Sem os dois
+volumes abaixo, todo novo deploy recria o container do zero: o token some, os leads somem e o
+WhatsApp volta pedindo QR. Na
 aba **Storage** do serviço, adicione dois **Volume mounts** (tipo "Volume", gerenciado pelo
 próprio EasyPanel):
 
@@ -77,6 +79,12 @@ próprio EasyPanel):
 
 Depois de adicionar os volumes, faça um novo **Deploy** pra aplicar (o EasyPanel avisa que mudanças
 de storage exigem reimplantar).
+
+
+> **Como o container lida com isso**: a imagem guarda os arquivos-semente em `/app/defaults` e,
+> a cada boot, o `src/bootstrap.js` copia para `/app/config` **apenas o que ainda não existe lá**.
+> Ou seja: o primeiro deploy popula o volume com a mensagem padrão, e os deploys seguintes nunca
+> sobrescrevem o que você editou pelo painel.
 
 ### A.5. Domínio e HTTPS
 

@@ -1,4 +1,6 @@
 const EventEmitter = require('events');
+const fs = require('fs');
+const path = require('path');
 const qrcodeTerminal = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 
@@ -143,6 +145,31 @@ async function logout() {
   setState({ status: 'disconnected', qr: null, message: null, info: null });
 }
 
+// Numa VPS o processo reinicia a cada deploy/restart e o estado volta para
+// "disconnected" ate alguem clicar em "Conectar" no painel — o que na pratica
+// deixava o disparo automatico parado sem ninguem perceber. Se a sessao salva
+// existe em disco (volume .wwebjs_auth), reconectamos sozinhos no boot, sem
+// pedir QR. Se nao existe, nao fazemos nada: abrir o Chrome so para gerar um
+// QR que ninguem esta olhando seria desperdicio de RAM.
+function hasSavedSession() {
+  const dataPath = path.resolve(process.cwd(), '.wwebjs_auth');
+  try {
+    return fs.readdirSync(dataPath).some((entry) => entry.startsWith('session'));
+  } catch (err) {
+    return false;
+  }
+}
+
+function autoConnectIfSessionExists() {
+  if (!hasSavedSession()) {
+    console.log('Nenhuma sessao do WhatsApp salva. Abra /whatsapp.html e clique em Conectar para escanear o QR.');
+    return false;
+  }
+  console.log('Sessao do WhatsApp encontrada em disco. Reconectando automaticamente...');
+  connect();
+  return true;
+}
+
 module.exports = {
   getClient,
   destroyClient,
@@ -150,4 +177,6 @@ module.exports = {
   logout,
   getState,
   onStateChange,
+  hasSavedSession,
+  autoConnectIfSessionExists,
 };

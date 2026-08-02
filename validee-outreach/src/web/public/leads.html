@@ -1,118 +1,155 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="pt-BR">
 <head>
-  <title>Leads — Validee Outreach</title>
-  <link rel="stylesheet" href="style.css">
-  <style>
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid var(--border); padding: 0.75rem; text-align: left; }
-    th { background: var(--bg-secondary); font-weight: bold; }
-    tr:hover { background: var(--bg-secondary); }
-    .status-pendente { color: #ffa500; }
-    .status-enviado { color: #4caf50; }
-    .status-erro { color: #f44336; }
-    .empty { text-align: center; color: var(--text-secondary); padding: 2rem; }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-    .stat-card { background: var(--bg-secondary); padding: 1rem; border-radius: 4px; }
-    .stat-number { font-size: 1.5rem; font-weight: bold; }
-    .stat-label { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Leads — Validee Outreach</title>
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat { background: #fff; border: 1px solid #e2e6ea; border-radius: 8px; padding: 14px; }
+  .stat-number { font-size: 24px; font-weight: 700; }
+  .stat-label { font-size: 13px; color: #6b7280; margin-top: 2px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e6ea; vertical-align: top; }
+  th { font-weight: 600; color: #374151; white-space: nowrap; }
+  td.endereco { max-width: 320px; color: #6b7280; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .pill-pendente { background: #fef3c7; color: #92400e; }
+  .pill-enviado { background: #d1fae5; color: #065f46; }
+  .pill-erro { background: #fee2e2; color: #991b1b; }
+  .filtros { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filtros button.active { background: #111827; color: #fff; }
+</style>
 </head>
 <body>
-  <main>
-    <h1>Leads Captados</h1>
+<nav>
+  <span class="brand">Validee Outreach</span>
+  <a href="/index.html">Inicio</a>
+  <a href="/whatsapp.html">WhatsApp</a>
+  <a href="/copy.html">Copy &amp; disparo</a>
+  <a href="/leads.html" class="active">Leads</a>
+  <a href="/send-now.html">Disparar</a>
+  <a href="/apify.html">Apify</a>
+  <a href="/reports.html">Relatórios</a>
+</nav>
+<main>
+  <h1>Leads captados</h1>
+  <p class="subtitle">Todos os leads raspados do Google Maps e o status de contato de cada um.</p>
 
-    <div id="stats" class="stats">
-      <div class="stat-card">
-        <div class="stat-number" id="total-count">0</div>
-        <div class="stat-label">Total</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number" id="pendente-count">0</div>
-        <div class="stat-label">Pendentes</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number" id="enviado-count">0</div>
-        <div class="stat-label">Enviados</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number" id="erro-count">0</div>
-        <div class="stat-label">Erros</div>
-      </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-number" id="c-total">—</div><div class="stat-label">Total</div></div>
+    <div class="stat"><div class="stat-number" id="c-pendente">—</div><div class="stat-label">Pendentes</div></div>
+    <div class="stat"><div class="stat-number" id="c-enviado">—</div><div class="stat-label">Enviados</div></div>
+    <div class="stat"><div class="stat-number" id="c-erro">—</div><div class="stat-label">Erros</div></div>
+  </div>
+
+  <div class="card">
+    <div class="filtros">
+      <button data-filtro="todos" class="active">Todos</button>
+      <button data-filtro="pendente">Pendentes</button>
+      <button data-filtro="enviado">Enviados</button>
+      <button data-filtro="erro">Erros</button>
+      <button id="btn-reload" class="primary">Atualizar</button>
     </div>
 
-    <div id="loading" style="display:none; text-align:center; color: var(--text-secondary);">
-      Carregando leads...
+    <div id="msg" class="message" style="display:none;"></div>
+
+    <div class="table-wrap">
+      <table id="tabela" style="display:none;">
+        <thead>
+          <tr><th>Nome</th><th>Telefone</th><th>Rating</th><th>Endereço</th><th>Status</th><th>Atualizado</th></tr>
+        </thead>
+        <tbody id="corpo"></tbody>
+      </table>
     </div>
+  </div>
+</main>
 
-    <div id="empty" class="empty" style="display:none;">
-      Nenhum lead captado ainda. Rode o scraper primeiro.
-    </div>
+<script>
+let todosLeads = [];
+let filtroAtual = 'todos';
 
-    <table id="leads-table" style="display:none;">
-      <thead>
-        <tr>
-          <th>Nome</th>
-          <th>Telefone</th>
-          <th>Rating</th>
-          <th>Endereço</th>
-          <th>Status</th>
-          <th>Atualizado</th>
-        </tr>
-      </thead>
-      <tbody id="leads-body">
-      </tbody>
-    </table>
-  </main>
+function texto(v) {
+  return (v === undefined || v === null || v === '') ? '—' : String(v);
+}
 
-  <script>
-    async function loadLeads() {
-      const loading = document.getElementById('loading');
-      const empty = document.getElementById('empty');
-      const table = document.getElementById('leads-table');
-      const body = document.getElementById('leads-body');
+function escapar(v) {
+  const div = document.createElement('div');
+  div.textContent = texto(v);
+  return div.innerHTML;
+}
 
-      loading.style.display = 'block';
-      try {
-        const res = await fetch('/api/leads');
-        const data = await res.json();
+function mostrarMensagem(txt, tipo) {
+  const el = document.getElementById('msg');
+  el.textContent = txt;
+  el.className = 'message ' + (tipo || '');
+  el.style.display = txt ? 'block' : 'none';
+}
 
-        if (!data.leads || data.leads.length === 0) {
-          empty.style.display = 'block';
-          loading.style.display = 'none';
-          return;
-        }
+function render() {
+  const corpo = document.getElementById('corpo');
+  const tabela = document.getElementById('tabela');
+  const lista = filtroAtual === 'todos'
+    ? todosLeads
+    : todosLeads.filter((l) => (l.status || 'pendente') === filtroAtual);
 
-        document.getElementById('total-count').textContent = data.leads.length;
-        document.getElementById('pendente-count').textContent = data.leads.filter(l => l.status === 'pendente').length;
-        document.getElementById('enviado-count').textContent = data.leads.filter(l => l.status === 'enviado').length;
-        document.getElementById('erro-count').textContent = data.leads.filter(l => l.status === 'erro').length;
+  if (!lista.length) {
+    tabela.style.display = 'none';
+    mostrarMensagem(
+      todosLeads.length
+        ? 'Nenhum lead com esse status.'
+        : 'Nenhum lead captado ainda. Rode o scraper na página Apify.',
+      ''
+    );
+    return;
+  }
 
-        body.innerHTML = '';
-        data.leads.forEach(lead => {
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${lead.nome || '—'}</td>
-            <td>${lead.telefone || '—'}</td>
-            <td>${lead.rating || '—'}</td>
-            <td>${lead.endereco || '—'}</td>
-            <td class="status-${lead.status || 'pendente'}">${lead.status || 'pendente'}</td>
-            <td>${lead.atualizado_em ? new Date(lead.atualizado_em).toLocaleDateString('pt-BR') : '—'}</td>
-          `;
-          body.appendChild(row);
-        });
+  mostrarMensagem('', '');
+  corpo.innerHTML = lista.map((l) => {
+    const status = l.status || 'pendente';
+    return '<tr>'
+      + '<td>' + escapar(l.nome) + '</td>'
+      + '<td>' + escapar(l.telefone) + '</td>'
+      + '<td>' + escapar(l.rating) + '</td>'
+      + '<td class="endereco">' + escapar(l.endereco) + '</td>'
+      + '<td><span class="pill pill-' + escapar(status) + '">' + escapar(status) + '</span></td>'
+      + '<td>' + escapar(l.atualizado_em) + '</td>'
+      + '</tr>';
+  }).join('');
+  tabela.style.display = 'table';
+}
 
-        table.style.display = 'table';
-      } catch (err) {
-        console.error('Erro ao carregar leads:', err);
-        empty.textContent = 'Erro ao carregar leads: ' + err.message;
-        empty.style.display = 'block';
-      } finally {
-        loading.style.display = 'none';
-      }
-    }
+async function carregar() {
+  mostrarMensagem('Carregando...', '');
+  try {
+    const res = await fetch('/api/leads');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao carregar leads.');
 
-    loadLeads();
-  </script>
+    todosLeads = data.leads || [];
+    document.getElementById('c-total').textContent = data.total || 0;
+    document.getElementById('c-pendente').textContent = (data.porStatus && data.porStatus.pendente) || 0;
+    document.getElementById('c-enviado').textContent = (data.porStatus && data.porStatus.enviado) || 0;
+    document.getElementById('c-erro').textContent = (data.porStatus && data.porStatus.erro) || 0;
+    render();
+  } catch (err) {
+    mostrarMensagem(err.message, 'error');
+  }
+}
+
+document.querySelectorAll('[data-filtro]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-filtro]').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    filtroAtual = btn.dataset.filtro;
+    render();
+  });
+});
+
+document.getElementById('btn-reload').addEventListener('click', carregar);
+carregar();
+</script>
 </body>
 </html>

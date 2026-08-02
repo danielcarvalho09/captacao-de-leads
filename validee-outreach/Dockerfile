@@ -14,12 +14,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Baixa o Chrome sem tentar instalar mais dependencias (ja instalamos acima).
-# PUPPETEER_CACHE_DIR=/.cache/puppeteer coloca o download num diretorio persistente.
-RUN PUPPETEER_CACHE_DIR=/.cache/puppeteer npx puppeteer browsers install chrome
+# ENV (nao prefixo do RUN): o caminho precisa ser o mesmo na hora de baixar e
+# na hora de rodar, senao o puppeteer nao encontra o Chrome em producao e a
+# conexao do WhatsApp falha com "Failed to launch the browser process".
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
+RUN npx puppeteer browsers install chrome
 
 COPY src ./src
-COPY config ./config
+
+# Vai para /app/defaults, NAO para /app/config: em producao /app/config e um
+# volume persistente que comeca vazio e esconderia o que a imagem trouxesse
+# nesse caminho. O src/bootstrap.js copia daqui para o volume no boot, apenas
+# o que ainda nao existe la (nunca sobrescreve config feita pelo usuario).
+COPY config ./defaults
 
 ENV NODE_ENV=production
 ENV PORT=3000

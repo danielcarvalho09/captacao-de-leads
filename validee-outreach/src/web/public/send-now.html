@@ -1,113 +1,168 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="pt-BR">
 <head>
-  <title>Disparar Agora — Validee Outreach</title>
-  <link rel="stylesheet" href="style.css">
-  <style>
-    .send-panel { max-width: 400px; margin: 2rem auto; }
-    .btn-send {
-      width: 100%;
-      padding: 1rem;
-      background: #4caf50;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn-send:hover:not(:disabled) { background: #45a049; }
-    .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
-    .status-message {
-      margin-top: 1.5rem;
-      padding: 1rem;
-      border-radius: 4px;
-      display: none;
-    }
-    .status-message.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #4caf50; }
-    .status-message.error { background: #ffebee; color: #c62828; border: 1px solid #f44336; }
-    .status-message.info { background: #e3f2fd; color: #1565c0; border: 1px solid #2196f3; }
-    .info-box {
-      background: var(--bg-secondary);
-      padding: 1rem;
-      border-radius: 4px;
-      margin-bottom: 1.5rem;
-      font-size: 0.9rem;
-      color: var(--text-secondary);
-      line-height: 1.6;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Disparar agora — Validee Outreach</title>
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
+  .resumo div { background: #f9fafb; border: 1px solid #e2e6ea; border-radius: 8px; padding: 12px; }
+  .resumo .n { font-size: 22px; font-weight: 700; }
+  .resumo .l { font-size: 13px; color: #6b7280; }
+</style>
 </head>
 <body>
-  <main>
-    <h1>Disparar Agora</h1>
+<nav>
+  <span class="brand">Validee Outreach</span>
+  <a href="/index.html">Inicio</a>
+  <a href="/whatsapp.html">WhatsApp</a>
+  <a href="/copy.html">Copy &amp; disparo</a>
+  <a href="/leads.html">Leads</a>
+  <a href="/send-now.html" class="active">Disparar</a>
+  <a href="/apify.html">Apify</a>
+  <a href="/reports.html">Relatórios</a>
+</nav>
+<main>
+  <h1>Disparar agora</h1>
+  <p class="subtitle">Dispara a fila de leads pendentes imediatamente, sem esperar o agendador.</p>
 
-    <div class="send-panel">
-      <div class="info-box">
-        <strong>ℹ️ Como funciona:</strong><br>
-        Clica no botão abaixo pra disparar as mensagens para os leads pendentes agora, respeitando o limite diário e as janelas de envio configuradas.
-      </div>
+  <div class="card">
+    <p class="hint">
+      As travas de segurança continuam valendo mesmo no disparo manual: limite diário,
+      delay aleatório entre mensagens e janelas de horário. Se estiver fora da janela permitida,
+      nada é enviado — isso é proposital, é o que protege o número de ban.
+    </p>
 
-      <button class="btn-send" id="btn-send" onclick="dispararAgora()">
-        📤 Disparar Agora
-      </button>
+    <div id="wpp-aviso" class="message" style="display:none;"></div>
 
-      <div id="status-message" class="status-message"></div>
-
-      <div id="result-details" style="margin-top: 1.5rem; display: none; background: var(--bg-secondary); padding: 1rem; border-radius: 4px; font-size: 0.9rem;">
-        <strong>Resultado:</strong>
-        <div id="result-text" style="margin-top: 0.5rem; line-height: 1.6;"></div>
-      </div>
+    <div class="actions">
+      <button id="btn-disparar" class="primary">Disparar agora</button>
     </div>
-  </main>
 
-  <script>
-    async function dispararAgora() {
-      const btn = document.getElementById('btn-send');
-      const statusMsg = document.getElementById('status-message');
-      const resultDetails = document.getElementById('result-details');
-      const resultText = document.getElementById('result-text');
+    <div id="msg" class="message" style="display:none;"></div>
 
-      btn.disabled = true;
-      statusMsg.style.display = 'none';
-      resultDetails.style.display = 'none';
+    <div id="resumo" class="resumo" style="display:none;">
+      <div><div class="n" id="r-enviadas">0</div><div class="l">Enviadas agora</div></div>
+      <div><div class="n" id="r-pendentes">0</div><div class="l">Ainda pendentes</div></div>
+    </div>
+  </div>
+</main>
 
-      try {
-        statusMsg.textContent = '⏳ Disparando...';
-        statusMsg.className = 'status-message info';
-        statusMsg.style.display = 'block';
+<script>
+let polling = null;
 
-        const res = await fetch('/api/sender/send-now', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
-        });
+function msg(txt, tipo) {
+  const el = document.getElementById('msg');
+  el.textContent = txt;
+  el.className = 'message ' + (tipo || '');
+  el.style.display = txt ? 'block' : 'none';
+}
 
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || 'Erro ao disparar');
-        }
-
-        statusMsg.textContent = '✅ Disparadas com sucesso!';
-        statusMsg.className = 'status-message success';
-
-        resultText.innerHTML = `
-          <strong>Enviadas:</strong> ${data.sent || 0}<br>
-          <strong>Fora da janela de horário:</strong> ${data.outside_window || 0}<br>
-          <strong>Limite diário atingido:</strong> ${data.daily_limit_reached || 0}<br>
-          <strong>Sem mensagem configurada:</strong> ${data.no_message || 0}<br>
-          <strong>Erros:</strong> ${data.errors || 0}
-        `;
-        resultDetails.style.display = 'block';
-      } catch (err) {
-        statusMsg.textContent = '❌ ' + err.message;
-        statusMsg.className = 'status-message error';
-      } finally {
-        btn.disabled = false;
-      }
+async function checarWhatsapp() {
+  const aviso = document.getElementById('wpp-aviso');
+  try {
+    const res = await fetch('/api/whatsapp/state');
+    const st = await res.json();
+    if (st.status === 'ready') {
+      const quem = st.info && st.info.number ? ' (' + st.info.number + ')' : '';
+      aviso.textContent = '✓ WhatsApp conectado' + quem;
+      aviso.className = 'message ok';
+    } else {
+      aviso.textContent = 'WhatsApp não está conectado (' + st.status + '). Conecte na página WhatsApp antes de disparar.';
+      aviso.className = 'message error';
     }
-  </script>
+    aviso.style.display = 'block';
+  } catch (err) {
+    aviso.style.display = 'none';
+  }
+}
+
+function aplicarResultado(job) {
+  const btn = document.getElementById('btn-disparar');
+  const resumo = document.getElementById('resumo');
+
+  if (job.error) {
+    msg('Erro: ' + job.error, 'error');
+    resumo.style.display = 'none';
+  } else if (job.result) {
+    const r = job.result;
+    document.getElementById('r-enviadas').textContent = r.sent || 0;
+    document.getElementById('r-pendentes').textContent = r.pendentes !== undefined ? r.pendentes : '—';
+    resumo.style.display = 'grid';
+
+    if (r.motivo) {
+      msg(r.motivo, r.sent ? 'ok' : '');
+    } else {
+      msg('Disparo concluído: ' + (r.sent || 0) + ' mensagem(ns) enviada(s).', 'ok');
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Disparar agora';
+  checarWhatsapp();
+}
+
+async function acompanhar() {
+  try {
+    const res = await fetch('/api/sender/status');
+    const job = await res.json();
+
+    if (job.running) {
+      msg('Disparo em andamento... (há um delay de 45-120s entre cada mensagem, pode demorar)', '');
+      return;
+    }
+
+    clearInterval(polling);
+    polling = null;
+    aplicarResultado(job);
+  } catch (err) {
+    clearInterval(polling);
+    polling = null;
+    msg('Erro ao acompanhar o disparo: ' + err.message, 'error');
+    document.getElementById('btn-disparar').disabled = false;
+  }
+}
+
+document.getElementById('btn-disparar').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-disparar');
+  btn.disabled = true;
+  btn.textContent = 'Disparando...';
+  document.getElementById('resumo').style.display = 'none';
+  msg('Iniciando disparo...', '');
+
+  try {
+    const res = await fetch('/api/sender/send-now', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao iniciar o disparo.');
+
+    // O disparo roda em background no servidor; aqui so acompanhamos.
+    polling = setInterval(acompanhar, 3000);
+    acompanhar();
+  } catch (err) {
+    msg(err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Disparar agora';
+  }
+});
+
+// Se a pagina for aberta com um disparo ja rodando (ex: outro navegador),
+// retoma o acompanhamento em vez de mostrar a tela zerada.
+(async function init() {
+  checarWhatsapp();
+  try {
+    const res = await fetch('/api/sender/status');
+    const job = await res.json();
+    if (job.running) {
+      document.getElementById('btn-disparar').disabled = true;
+      document.getElementById('btn-disparar').textContent = 'Disparando...';
+      polling = setInterval(acompanhar, 3000);
+      acompanhar();
+    } else if (job.result || job.error) {
+      aplicarResultado(job);
+    }
+  } catch (err) { /* painel recem-iniciado, sem job ainda */ }
+})();
+</script>
 </body>
 </html>

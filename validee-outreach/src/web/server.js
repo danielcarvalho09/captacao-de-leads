@@ -12,6 +12,9 @@ const { fetchApifyUsage } = require('../apify-usage');
 const { computeReport } = require('../reports');
 const { scrapeLeads } = require('../scraper');
 const { startScheduler } = require('../scheduler');
+const { runSender } = require('../sender');
+const { seedConfigDir } = require('../bootstrap');
+const { parse } = require('csv-parse/sync');
 
 const {
   MESSAGE_TEMPLATE_PATH = 'config/message-template.txt',
@@ -58,6 +61,10 @@ function requireAuth(req, res, next) {
   res.set('WWW-Authenticate', 'Basic realm="Validee Outreach"');
   res.status(401).send('Autenticacao necessaria.');
 }
+
+// Precisa rodar antes de servir qualquer request: garante que o volume
+// persistente tenha os arquivos-semente (template da mensagem etc).
+seedConfigDir();
 
 const app = express();
 app.use(requireAuth);
@@ -165,6 +172,78 @@ app.get('/api/reports', (req, res) => {
   }
 });
 
+// --- Leads (lista de captados) ---
+
+app.get('/api/leads', (req, res) => {
+  try {
+    const leadsPath = path.resolve(process.cwd(), process.env.LEADS_CSV_PATH || 'config/leads.csv');
+    if (!fs.existsSync(leadsPath)) {
+      res.json({ leads: [], total: 0, porStatus: { pendente: 0, enviado: 0, erro: 0 } });
+      return;
+    }
+    // csv-parse (nao split(',')): os enderecos do Google Maps vem entre aspas
+    // e cheios de virgulas, entao um split ingenuo embaralha as colunas.
+    const leads = parse(fs.readFileSync(leadsPath, 'utf8'), { columns: true, skip_empty_lines: true });
+    const porStatus = leads.reduce(
+      (acc, lead) => {
+        const status = lead.status || 'pendente';
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      },
+      { pendente: 0, enviado: 0, erro: 0 }
+    );
+    res.json({ leads, total: leads.length, porStatus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Disparo manual ("Disparar agora") ---
+
+// runSender() pode levar dezenas de minutos (delay de 45-120s entre cada
+// mensagem), muito alem do timeout de uma request HTTP. Por isso o POST so
+// dispara o job em background e responde na hora; o painel acompanha o
+// resultado por polling em /api/sender/status.
+const senderJob = { running: false, startedAt: null, finishedAt: null, result: null, error: null };
+
+const MOTIVOS = {
+  'fora-da-janela': 'Fora da janela de horario permitida. Ajuste as janelas em "Copy & disparo" se quiser disparar agora.',
+  'sem-pendentes': 'Nenhum lead pendente na fila. Rode o scraper para captar novos leads.',
+  'limite-diario': 'Limite diario de mensagens ja atingido hoje. Os leads restantes ficam para amanha.',
+  'erro-conexao': 'Nao foi possivel conectar ao WhatsApp. Verifique a pagina WhatsApp.',
+};
+
+app.post('/api/sender/send-now', (req, res) => {
+  if (senderJob.running) {
+    res.status(409).json({ error: 'Ja existe um disparo em andamento.' });
+    return;
+  }
+
+  senderJob.running = true;
+  senderJob.startedAt = new Date().toISOString();
+  senderJob.finishedAt = null;
+  senderJob.result = null;
+  senderJob.error = null;
+
+  runSender()
+    .then((result) => {
+      senderJob.result = { ...result, motivo: result.skippedReason ? MOTIVOS[result.skippedReason] || result.skippedReason : null };
+    })
+    .catch((err) => {
+      senderJob.error = err.message;
+    })
+    .finally(() => {
+      senderJob.running = false;
+      senderJob.finishedAt = new Date().toISOString();
+    });
+
+  res.status(202).json({ started: true });
+});
+
+app.get('/api/sender/status', (req, res) => {
+  res.json(senderJob);
+});
+
 app.listen(Number(PORT), () => {
   console.log(`Painel web da Validee rodando em http://localhost:${PORT}`);
   if (!DASHBOARD_USER || !DASHBOARD_PASSWORD) {
@@ -180,6 +259,10 @@ if (ENABLE_SCHEDULER === 'true') {
   startScheduler();
 }
 
+// Reconecta o WhatsApp sozinho se ja houver sessao salva no volume, para o
+// painel nao aparecer "desconectado" depois de todo deploy/restart.
+whatsapp.autoConnectIfSessionExists();
+
 // Numa VPS este processo deve ficar rodando indefinidamente (via pm2) — um
 // erro nao tratado (ex: falha pontual do puppeteer) nao pode derrubar o
 // painel nem o scheduler.
@@ -188,43 +271,4 @@ process.on('unhandledRejection', (err) => {
 });
 process.on('uncaughtException', (err) => {
   console.error('Erro nao tratado (uncaughtException):', err);
-});
-
-// --- Leads (lista de captados) ---
-
-app.get('/api/leads', (req, res) => {
-  try {
-    const leadsPath = path.resolve(process.cwd(), 'config/leads.csv');
-    if (!fs.existsSync(leadsPath)) {
-      return res.json({ leads: [] });
-    }
-    const csv = fs.readFileSync(leadsPath, 'utf8');
-    const lines = csv.trim().split('\n');
-    if (lines.length <= 1) {
-      return res.json({ leads: [] });
-    }
-    const headers = lines[0].split(',');
-    const leads = lines.slice(1).map(line => {
-      const values = line.split(',');
-      const lead = {};
-      headers.forEach((h, i) => {
-        lead[h.trim()] = values[i] ? values[i].trim().replace(/^"(.*)"$/, '$1') : '';
-      });
-      return lead;
-    });
-    res.json({ leads });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --- Disparar agora (manual, sem agendador) ---
-
-app.post('/api/sender/send-now', async (req, res) => {
-  try {
-    const result = await runSender();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
