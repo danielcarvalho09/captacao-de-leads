@@ -3,7 +3,7 @@ FROM node:20-slim
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 # --install-deps faz o proprio puppeteer descobrir e instalar as bibliotecas
 # de sistema corretas pra essa versao do Chrome nessa versao do Debian (evita
