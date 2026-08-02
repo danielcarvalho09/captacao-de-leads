@@ -1,0 +1,13 @@
+node_modules/
+.env
+
+# Sessao autenticada do WhatsApp Web (nao deve ser versionada nem compartilhada)
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Dados gerados (leads e logs de envio contem dados pessoais)
+config/leads.csv
+config/log-envios.csv
+
+# Contem a chave de API do Apify em texto plano
+config/apify-config.json

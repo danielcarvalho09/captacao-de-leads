@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Relatórios — Validee Outreach</title>
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 14px; }
+  .stat-tile { text-align: center; padding: 14px 8px; border: 1px solid var(--border); border-radius: 10px; }
+  .stat-tile .value { font-size: 24px; font-weight: 700; }
+  .stat-tile .label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  .tag { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .tag-enviado { background: #e7f7ee; color: var(--ok); }
+  .tag-erro { background: #fdecee; color: var(--danger); }
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">Validee Outreach</span>
+  <a href="/index.html">Inicio</a>
+  <a href="/whatsapp.html">WhatsApp</a>
+  <a href="/copy.html">Copy &amp; disparo</a>
+  <a href="/apify.html">Apify</a>
+  <a href="/reports.html" class="active">Relatórios</a>
+</nav>
+<main>
+  <h1>Relatórios de disparo</h1>
+  <p class="subtitle">Resultados dos disparos feitos até agora.</p>
+
+  <div class="card">
+    <strong>Leads</strong>
+    <div class="stat-grid" id="leads-stats" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card">
+    <strong>Hoje</strong>
+    <div id="hoje-summary" style="margin-top:8px;"></div>
+    <div class="progress-bar"><div id="hoje-fill" class="progress-bar-fill" style="width:0%"></div></div>
+  </div>
+
+  <div class="card">
+    <strong>Desde o início</strong>
+    <div class="stat-grid" id="totais-stats" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card">
+    <strong>Últimos dias</strong>
+    <table>
+      <thead><tr><th>Data</th><th>Enviados</th><th>Erros</th></tr></thead>
+      <tbody id="daily-body"></tbody>
+    </table>
+    <div id="daily-empty" class="empty" style="display:none;">Nenhum envio registrado ainda.</div>
+  </div>
+
+  <div class="card">
+    <strong>Envios recentes</strong>
+    <table>
+      <thead><tr><th>Data/hora</th><th>Nome</th><th>Telefone</th><th>Status</th></tr></thead>
+      <tbody id="recent-body"></tbody>
+    </table>
+    <div id="recent-empty" class="empty" style="display:none;">Nenhum envio registrado ainda.</div>
+  </div>
+
+  <div class="actions">
+    <button id="btn-refresh" class="secondary">Atualizar</button>
+  </div>
+</main>
+<script>
+function statTile(value, label) {
+  const div = document.createElement('div');
+  div.className = 'stat-tile';
+  div.innerHTML = `<div class="value">${value}</div><div class="label">${label}</div>`;
+  return div;
+}
+
+async function loadReport() {
+  const res = await fetch('/api/reports');
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('leads-stats').textContent = data.error || 'Erro ao carregar relatório.';
+    return;
+  }
+
+  const leadsStats = document.getElementById('leads-stats');
+  leadsStats.innerHTML = '';
+  leadsStats.appendChild(statTile(data.leads.total, 'Total de leads'));
+  leadsStats.appendChild(statTile(data.leads.pendente, 'Pendentes'));
+  leadsStats.appendChild(statTile(data.leads.enviado, 'Enviados'));
+  leadsStats.appendChild(statTile(data.leads.erro, 'Com erro'));
+
+  document.getElementById('hoje-summary').textContent =
+    `${data.hoje.sentToday} de ${data.hoje.dailyLimit} mensagens enviadas hoje (${data.hoje.remainingQuota} restantes na cota diária).`;
+  const pct = data.hoje.dailyLimit > 0 ? Math.min((data.hoje.sentToday / data.hoje.dailyLimit) * 100, 100) : 0;
+  document.getElementById('hoje-fill').style.width = `${pct}%`;
+
+  const totaisStats = document.getElementById('totais-stats');
+  totaisStats.innerHTML = '';
+  totaisStats.appendChild(statTile(data.totais.enviado, 'Total enviados'));
+  totaisStats.appendChild(statTile(data.totais.erro, 'Total erros'));
+  totaisStats.appendChild(statTile(data.totais.taxaSucesso !== null ? `${data.totais.taxaSucesso}%` : 'N/D', 'Taxa de sucesso'));
+
+  const dailyBody = document.getElementById('daily-body');
+  dailyBody.innerHTML = '';
+  document.getElementById('daily-empty').style.display = data.daily.length ? 'none' : 'block';
+  data.daily.forEach((d) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${d.date}</td><td>${d.enviado}</td><td>${d.erro}</td>`;
+    dailyBody.appendChild(tr);
+  });
+
+  const recentBody = document.getElementById('recent-body');
+  recentBody.innerHTML = '';
+  document.getElementById('recent-empty').style.display = data.recent.length ? 'none' : 'block';
+  data.recent.forEach((r) => {
+    const tr = document.createElement('tr');
+    const tagClass = r.status === 'enviado' ? 'tag-enviado' : 'tag-erro';
+    tr.innerHTML = `<td>${r.timestamp}</td><td>${r.nome || ''}</td><td>${r.telefone || ''}</td><td><span class="tag ${tagClass}">${r.status}</span></td>`;
+    recentBody.appendChild(tr);
+  });
+}
+
+document.getElementById('btn-refresh').addEventListener('click', loadReport);
+loadReport();
+</script>
+</body>
+</html>

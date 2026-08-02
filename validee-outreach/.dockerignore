@@ -1,0 +1,13 @@
+node_modules
+.git
+.env
+.wwebjs_auth
+.wwebjs_cache
+npm-debug.log
+
+# Dados gerados/sensíveis: nao vao para dentro da imagem, ficam so no volume
+# persistente montado pelo EasyPanel (ver DEPLOY.md).
+config/leads.csv
+config/log-envios.csv
+config/settings.json
+config/apify-config.json

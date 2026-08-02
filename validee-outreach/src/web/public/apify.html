@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Apify — Validee Outreach</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<nav>
+  <span class="brand">Validee Outreach</span>
+  <a href="/index.html">Inicio</a>
+  <a href="/whatsapp.html">WhatsApp</a>
+  <a href="/copy.html">Copy &amp; disparo</a>
+  <a href="/apify.html" class="active">Apify</a>
+  <a href="/reports.html">Relatórios</a>
+</nav>
+<main>
+  <h1>Configuração do Apify</h1>
+  <p class="subtitle">Chave de API e parâmetros de busca usados pelo scraper de leads no Google Maps.</p>
+
+  <div class="card">
+    <label for="token">Token de API do Apify</label>
+    <input type="password" id="token" placeholder="Cole aqui o token novo (Settings > Integrations no Apify)" />
+    <div class="hint" id="token-hint"></div>
+
+    <label for="actor-id">Actor ID</label>
+    <input type="text" id="actor-id" />
+
+    <label for="search-term">Termo de busca</label>
+    <input type="text" id="search-term" placeholder="ex: clinica de estetica" />
+
+    <label for="search-location">Localização</label>
+    <input type="text" id="search-location" placeholder="ex: Belo Horizonte, MG, Brasil" />
+
+    <label for="max-leads">Máximo de leads por rodada</label>
+    <input type="number" id="max-leads" />
+    <div class="hint" id="max-leads-hint"></div>
+
+    <label for="min-rating">Nota mínima do Google (0 a 5)</label>
+    <input type="number" id="min-rating" step="0.1" />
+
+    <label for="max-rating">Nota máxima do Google (0 a 5)</label>
+    <input type="number" id="max-rating" step="0.1" />
+
+    <div class="actions">
+      <button id="btn-save-config" class="primary">Salvar configuração</button>
+    </div>
+    <div id="config-message" style="display:none;"></div>
+  </div>
+
+  <h1>Rodar scraper</h1>
+  <p class="subtitle">Chama o Apify agora com a configuração acima e adiciona os leads novos a <code>config/leads.csv</code>.</p>
+
+  <div class="card">
+    <div class="actions">
+      <button id="btn-run-scraper" class="primary">Rodar scraper agora</button>
+    </div>
+    <div class="hint">Pode levar de 30 segundos a alguns minutos, dependendo do tamanho da busca.</div>
+    <div id="scraper-result" style="display:none;"></div>
+  </div>
+
+  <h1>Uso da conta Apify</h1>
+  <p class="subtitle">Acompanhe quanto do plano mensal já foi consumido.</p>
+
+  <div class="card">
+    <div id="summary">Carregando...</div>
+    <div class="progress-bar"><div id="progress-fill" class="progress-bar-fill" style="width:0%"></div></div>
+
+    <div class="actions">
+      <button id="btn-refresh" class="secondary">Atualizar</button>
+    </div>
+
+    <div id="error-message" style="display:none;"></div>
+
+    <details>
+      <summary>Ver resposta bruta da API do Apify</summary>
+      <pre id="raw-json"></pre>
+    </details>
+  </div>
+</main>
+<script>
+function showMessage(el, text, type) {
+  el.textContent = text;
+  el.className = `message ${type}`;
+  el.style.display = 'block';
+}
+
+function formatUsd(value) {
+  if (typeof value !== 'number') return 'N/D';
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
+}
+
+// --- Configuração do Apify ---
+
+async function loadConfig() {
+  const res = await fetch('/api/apify/config');
+  const data = await res.json();
+
+  document.getElementById('token-hint').textContent = data.config.hasToken
+    ? `Token atual termina em ${data.config.tokenPreview}. Deixe o campo em branco para manter.`
+    : 'Nenhum token configurado ainda.';
+  document.getElementById('actor-id').value = data.config.actorId;
+  document.getElementById('search-term').value = data.config.searchTerm;
+  document.getElementById('search-location').value = data.config.searchLocation;
+  document.getElementById('max-leads').value = data.config.maxLeads;
+  document.getElementById('max-leads-hint').textContent =
+    `Entre ${data.guardrails.maxLeads.min} e ${data.guardrails.maxLeads.max} leads por rodada.`;
+  document.getElementById('min-rating').value = data.config.minRating;
+  document.getElementById('max-rating').value = data.config.maxRating;
+}
+
+document.getElementById('btn-save-config').addEventListener('click', async () => {
+  const payload = {
+    token: document.getElementById('token').value,
+    actorId: document.getElementById('actor-id').value,
+    searchTerm: document.getElementById('search-term').value,
+    searchLocation: document.getElementById('search-location').value,
+    maxLeads: Number(document.getElementById('max-leads').value),
+    minRating: Number(document.getElementById('min-rating').value),
+    maxRating: Number(document.getElementById('max-rating').value),
+  };
+
+  const res = await fetch('/api/apify/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  const el = document.getElementById('config-message');
+
+  if (res.ok) {
+    showMessage(el, 'Configuração salva.', 'ok');
+    document.getElementById('token').value = '';
+    await loadConfig();
+  } else {
+    showMessage(el, data.error || 'Erro ao salvar.', 'error');
+  }
+});
+
+// --- Rodar scraper ---
+
+document.getElementById('btn-run-scraper').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-run-scraper');
+  const resultEl = document.getElementById('scraper-result');
+
+  btn.disabled = true;
+  btn.textContent = 'Rodando...';
+  resultEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/scraper/run', { method: 'POST' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Erro ao rodar o scraper.');
+    }
+
+    showMessage(
+      resultEl,
+      `Concluído: ${data.added} leads novos adicionados, ${data.duplicates} já existiam, ${data.discarded} descartados (rating/telefone). Total agora: ${data.total}.`,
+      'ok'
+    );
+  } catch (err) {
+    showMessage(resultEl, err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Rodar scraper agora';
+  }
+});
+
+// --- Uso da conta Apify ---
+
+async function loadUsage() {
+  const summary = document.getElementById('summary');
+  const fill = document.getElementById('progress-fill');
+  const errorEl = document.getElementById('error-message');
+  const rawEl = document.getElementById('raw-json');
+
+  errorEl.style.display = 'none';
+  summary.textContent = 'Carregando...';
+
+  try {
+    const res = await fetch('/api/apify/usage');
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Erro ao buscar uso do Apify.');
+    }
+
+    const percent = typeof data.percentUsed === 'number' ? data.percentUsed : null;
+    summary.innerHTML = `
+      <strong>${formatUsd(data.currentUsd)}</strong> usados de
+      <strong>${formatUsd(data.maxUsd)}</strong> no mês
+      ${percent !== null ? `(${percent}%)` : ''}
+    `;
+
+    fill.style.width = `${Math.min(percent ?? 0, 100)}%`;
+    fill.className = 'progress-bar-fill';
+    if (percent !== null && percent >= 90) fill.classList.add('danger');
+    else if (percent !== null && percent >= 70) fill.classList.add('warn');
+
+    rawEl.textContent = JSON.stringify(data.raw, null, 2);
+  } catch (err) {
+    summary.textContent = 'Não foi possível carregar o uso do Apify.';
+    showMessage(errorEl, err.message, 'error');
+  }
+}
+
+document.getElementById('btn-refresh').addEventListener('click', loadUsage);
+
+loadConfig();
+loadUsage();
+</script>
+</body>
+</html>

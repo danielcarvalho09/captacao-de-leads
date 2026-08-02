@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Copy &amp; disparo — Validee Outreach</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<nav>
+  <span class="brand">Validee Outreach</span>
+  <a href="/index.html">Inicio</a>
+  <a href="/whatsapp.html">WhatsApp</a>
+  <a href="/copy.html" class="active">Copy &amp; disparo</a>
+  <a href="/apify.html">Apify</a>
+  <a href="/reports.html">Relatórios</a>
+</nav>
+<main>
+  <h1>Mensagem de abertura</h1>
+  <p class="subtitle">Use <code>{nome}</code> onde quiser que entre o nome do negócio. É só o gancho inicial — o resto da conversa é sempre manual.</p>
+
+  <div class="card">
+    <textarea id="template" rows="5"></textarea>
+    <div class="actions">
+      <button id="btn-save-template" class="primary">Salvar mensagem</button>
+    </div>
+    <div id="template-message" style="display:none;"></div>
+  </div>
+
+  <h1>Configurações de disparo</h1>
+  <p class="subtitle">Limites de segurança contra ban: o painel não deixa configurar valores fora da faixa segura.</p>
+
+  <div class="card">
+    <label for="daily-limit">Limite de mensagens por dia</label>
+    <input type="number" id="daily-limit" />
+    <div class="hint" id="daily-limit-hint"></div>
+
+    <label for="min-delay">Delay mínimo entre envios (segundos)</label>
+    <input type="number" id="min-delay" />
+
+    <label for="max-delay">Delay máximo entre envios (segundos)</label>
+    <input type="number" id="max-delay" />
+    <div class="hint" id="delay-hint"></div>
+
+    <label>Janelas de horário permitidas</label>
+    <div id="windows-list"></div>
+    <div class="actions">
+      <button id="btn-add-window" class="secondary" type="button">+ Adicionar janela</button>
+    </div>
+
+    <div class="actions">
+      <button id="btn-save-settings" class="primary">Salvar configurações</button>
+    </div>
+    <div id="settings-message" style="display:none;"></div>
+  </div>
+</main>
+<script>
+const DAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+let guardrails = null;
+
+function showMessage(el, text, type) {
+  el.textContent = text;
+  el.className = `message ${type}`;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+function renderWindowRow(win) {
+  const row = document.createElement('div');
+  row.className = 'window-row';
+
+  const daysBox = document.createElement('div');
+  daysBox.className = 'days-picker';
+  DAY_LABELS.forEach((label, dayIndex) => {
+    const wrapper = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.dataset.day = dayIndex;
+    checkbox.checked = win.days.includes(dayIndex);
+    wrapper.appendChild(checkbox);
+    wrapper.appendChild(document.createTextNode(label));
+    daysBox.appendChild(wrapper);
+  });
+
+  const startInput = document.createElement('input');
+  startInput.type = 'time';
+  startInput.className = 'window-start';
+  startInput.value = win.start;
+
+  const endInput = document.createElement('input');
+  endInput.type = 'time';
+  endInput.className = 'window-end';
+  endInput.value = win.end;
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'remove-btn';
+  removeBtn.type = 'button';
+  removeBtn.textContent = 'Remover';
+  removeBtn.addEventListener('click', () => row.remove());
+
+  row.appendChild(daysBox);
+  row.appendChild(startInput);
+  row.appendChild(endInput);
+  row.appendChild(removeBtn);
+  return row;
+}
+
+function collectWindows() {
+  return [...document.querySelectorAll('#windows-list .window-row')].map((row) => ({
+    days: [...row.querySelectorAll('input[type="checkbox"]')]
+      .filter((c) => c.checked)
+      .map((c) => Number(c.dataset.day)),
+    start: row.querySelector('.window-start').value,
+    end: row.querySelector('.window-end').value,
+  }));
+}
+
+async function loadTemplate() {
+  const res = await fetch('/api/template');
+  const data = await res.json();
+  document.getElementById('template').value = data.content || '';
+}
+
+async function loadSettings() {
+  const res = await fetch('/api/settings');
+  const data = await res.json();
+  guardrails = data.guardrails;
+
+  document.getElementById('daily-limit').value = data.settings.dailyLimit;
+  document.getElementById('daily-limit').min = guardrails.dailyLimit.min;
+  document.getElementById('daily-limit').max = guardrails.dailyLimit.max;
+  document.getElementById('daily-limit-hint').textContent =
+    `Entre ${guardrails.dailyLimit.min} e ${guardrails.dailyLimit.max} mensagens/dia (limite de segurança contra ban).`;
+
+  document.getElementById('min-delay').value = data.settings.minDelaySeconds;
+  document.getElementById('max-delay').value = data.settings.maxDelaySeconds;
+  document.getElementById('min-delay').min = guardrails.delaySeconds.min;
+  document.getElementById('max-delay').max = guardrails.delaySeconds.max;
+  document.getElementById('delay-hint').textContent =
+    `Entre ${guardrails.delaySeconds.min}s e ${guardrails.delaySeconds.max}s. Nunca use um delay fixo.`;
+
+  const list = document.getElementById('windows-list');
+  list.innerHTML = '';
+  data.settings.windows.forEach((win) => list.appendChild(renderWindowRow(win)));
+}
+
+document.getElementById('btn-save-template').addEventListener('click', async () => {
+  const content = document.getElementById('template').value;
+  const res = await fetch('/api/template', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  const data = await res.json();
+  const el = document.getElementById('template-message');
+  if (res.ok) showMessage(el, 'Mensagem salva.', 'ok');
+  else showMessage(el, data.error || 'Erro ao salvar.', 'error');
+});
+
+document.getElementById('btn-add-window').addEventListener('click', () => {
+  document.getElementById('windows-list').appendChild(
+    renderWindowRow({ days: [2, 3, 4], start: '09:00', end: '10:00' })
+  );
+});
+
+document.getElementById('btn-save-settings').addEventListener('click', async () => {
+  const payload = {
+    dailyLimit: Number(document.getElementById('daily-limit').value),
+    minDelaySeconds: Number(document.getElementById('min-delay').value),
+    maxDelaySeconds: Number(document.getElementById('max-delay').value),
+    windows: collectWindows(),
+  };
+  const res = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  const el = document.getElementById('settings-message');
+  if (res.ok) {
+    showMessage(el, 'Configurações salvas.', 'ok');
+    await loadSettings();
+  } else {
+    showMessage(el, data.error || 'Erro ao salvar.', 'error');
+  }
+});
+
+loadTemplate();
+loadSettings();
+</script>
+</body>
+</html>

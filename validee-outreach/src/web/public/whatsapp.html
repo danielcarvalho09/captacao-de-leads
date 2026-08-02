@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WhatsApp — Validee Outreach</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<nav>
+  <span class="brand">Validee Outreach</span>
+  <a href="/index.html">Inicio</a>
+  <a href="/whatsapp.html" class="active">WhatsApp</a>
+  <a href="/copy.html">Copy &amp; disparo</a>
+  <a href="/apify.html">Apify</a>
+  <a href="/reports.html">Relatórios</a>
+</nav>
+<main>
+  <h1>Conexão com o WhatsApp</h1>
+  <p class="subtitle">Conecte sempre que quiser. A sessão fica salva localmente, então não é necessário escanear o QR toda vez.</p>
+
+  <div class="card">
+    <span id="status-badge" class="status-badge status-disconnected"><span class="dot"></span><span id="status-text">Verificando...</span></span>
+
+    <div id="connected-banner" class="message ok" style="display:none;"></div>
+
+    <div id="qr-area" class="qr-box" style="display:none;">
+      <img id="qr-img" alt="QR code do WhatsApp" />
+      <span class="hint">Abra o WhatsApp no celular → Aparelhos conectados → Conectar aparelho</span>
+    </div>
+
+    <div id="error-detail" class="message error" style="display:none;"></div>
+
+    <div class="actions">
+      <button id="btn-connect" class="primary">Conectar</button>
+      <button id="btn-logout" class="danger" style="display:none;">Desconectar</button>
+    </div>
+
+    <div id="message" style="display:none;"></div>
+  </div>
+</main>
+<script>
+const statusLabels = {
+  disconnected: 'Desconectado',
+  starting: 'Iniciando sessão...',
+  qr: 'Aguardando leitura do QR code',
+  authenticated: 'Autenticado, finalizando...',
+  ready: 'Conectado e pronto',
+  auth_failure: 'Falha de autenticação',
+  error: 'Erro ao conectar',
+};
+
+const badge = document.getElementById('status-badge');
+const statusText = document.getElementById('status-text');
+const qrArea = document.getElementById('qr-area');
+const qrImg = document.getElementById('qr-img');
+const messageEl = document.getElementById('message');
+const errorDetailEl = document.getElementById('error-detail');
+const connectedBanner = document.getElementById('connected-banner');
+const btnConnect = document.getElementById('btn-connect');
+const btnLogout = document.getElementById('btn-logout');
+
+function showMessage(text, type) {
+  messageEl.textContent = text;
+  messageEl.className = `message ${type}`;
+  messageEl.style.display = 'block';
+  setTimeout(() => { messageEl.style.display = 'none'; }, 5000);
+}
+
+async function refreshState() {
+  try {
+    const res = await fetch('/api/whatsapp/state');
+    const state = await res.json();
+    badge.className = `status-badge status-${state.status}`;
+    statusText.textContent = statusLabels[state.status] || state.status;
+
+    if (state.status === 'qr' && state.qrDataUrl) {
+      qrImg.src = state.qrDataUrl;
+      qrArea.style.display = 'flex';
+    } else {
+      qrArea.style.display = 'none';
+    }
+
+    if ((state.status === 'error' || state.status === 'auth_failure') && state.message) {
+      errorDetailEl.textContent = state.message;
+      errorDetailEl.style.display = 'block';
+    } else {
+      errorDetailEl.style.display = 'none';
+    }
+
+    const isConnected = state.status === 'ready';
+    if (isConnected) {
+      const who = state.info?.number ? `${state.info.name || 'WhatsApp'} (${state.info.number})` : 'WhatsApp';
+      connectedBanner.textContent = `✓ Conectado — ${who}`;
+      connectedBanner.style.display = 'block';
+    } else {
+      connectedBanner.style.display = 'none';
+    }
+
+    btnConnect.style.display = isConnected ? 'none' : 'inline-block';
+    btnLogout.style.display = isConnected ? 'inline-block' : 'none';
+  } catch (err) {
+    statusText.textContent = 'Não foi possível consultar o status';
+  }
+}
+
+document.getElementById('btn-connect').addEventListener('click', async () => {
+  await fetch('/api/whatsapp/connect', { method: 'POST' });
+  showMessage('Conectando... aguarde o QR code aparecer.', 'ok');
+  refreshState();
+});
+
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  if (!confirm('Isso vai desconectar a sessão atual do WhatsApp. Continuar?')) return;
+  await fetch('/api/whatsapp/logout', { method: 'POST' });
+  showMessage('Sessão desconectada.', 'ok');
+  refreshState();
+});
+
+refreshState();
+setInterval(refreshState, 3000);
+</script>
+</body>
+</html>
