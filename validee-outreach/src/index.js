@@ -6,13 +6,15 @@ const { startScheduler } = require('./scheduler');
 
 function printUsage() {
   console.log('Uso:');
-  console.log('  node src/index.js --now       Dispara a fila agora (so envia se estiver dentro da janela permitida)');
+  console.log('  node src/index.js --now       Dispara a fila agora, ignorando a janela de horario (limite diario e delay continuam valendo)');
   console.log('  node src/index.js --schedule  Sobe um processo que verifica a cada 15 min e dispara dentro da janela');
 }
 
 async function runOnce() {
   try {
-    await runSender();
+    // --now e disparo manual: ignora a janela de horario, igual ao botao
+    // "Disparar agora" do painel. O --schedule continua respeitando.
+    await runSender({ ignoreWindow: true });
   } catch (err) {
     console.error('Erro ao rodar o sender:', err.message);
   }

@@ -124,12 +124,20 @@ function toDigitsWithCountryCode(telefoneRaw) {
   return digits;
 }
 
-async function runSender() {
+// ignoreWindow=true e o disparo manual ("Disparar agora" no painel e o CLI
+// --now): quem clicou esta na frente da tela decidindo, entao a janela de
+// horario nao se aplica. O limite diario e o delay aleatorio continuam
+// valendo nos dois modos — sao eles que protegem o numero de ban. O disparo
+// automatico (scheduler) nunca ignora a janela.
+async function runSender({ ignoreWindow = false } = {}) {
   const settings = loadSettings();
 
-  if (!isWithinSendingWindow(new Date(), settings.windows)) {
+  if (!ignoreWindow && !isWithinSendingWindow(new Date(), settings.windows)) {
     console.log('Fora da janela de envio permitida. Nada sera disparado.');
     return { sent: 0, skippedReason: 'fora-da-janela' };
+  }
+  if (ignoreWindow && !isWithinSendingWindow(new Date(), settings.windows)) {
+    console.log('Disparo manual fora da janela de horario (limite diario e delay continuam valendo).');
   }
 
   const leads = loadLeads();
@@ -165,7 +173,7 @@ async function runSender() {
     if (sentCount >= remainingQuota) {
       break;
     }
-    if (!isWithinSendingWindow(new Date(), settings.windows)) {
+    if (!ignoreWindow && !isWithinSendingWindow(new Date(), settings.windows)) {
       stoppedByWindow = true;
       break;
     }
@@ -216,7 +224,11 @@ async function runSender() {
     console.log(`Envio concluido. ${sentCount} mensagens enviadas nesta execucao.`);
   }
 
-  return { sent: sentCount, pendentes: stillPending };
+  return {
+    sent: sentCount,
+    pendentes: stillPending,
+    foraDaJanela: ignoreWindow && !isWithinSendingWindow(new Date(), settings.windows),
+  };
 }
 
 module.exports = {

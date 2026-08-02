@@ -29,12 +29,14 @@
 
   <div class="card">
     <p class="hint">
-      As travas de segurança continuam valendo mesmo no disparo manual: limite diário,
-      delay aleatório entre mensagens e janelas de horário. Se estiver fora da janela permitida,
-      nada é enviado — isso é proposital, é o que protege o número de ban.
+      O disparo manual <strong>ignora a janela de horário</strong> — se você clicou, é porque
+      decidiu disparar agora. O <strong>limite diário</strong> e o <strong>delay aleatório de
+      45-120s</strong> entre mensagens continuam valendo: são eles que protegem o número de ban.
+      O disparo automático (agendador) continua respeitando as janelas normalmente.
     </p>
 
     <div id="wpp-aviso" class="message" style="display:none;"></div>
+    <div id="janela-aviso" class="message" style="display:none;"></div>
 
     <div class="actions">
       <button id="btn-disparar" class="primary">Disparar agora</button>
@@ -51,12 +53,24 @@
 
 <script>
 let polling = null;
+let dentroDaJanela = null;
 
 function msg(txt, tipo) {
   const el = document.getElementById('msg');
   el.textContent = txt;
   el.className = 'message ' + (tipo || '');
   el.style.display = txt ? 'block' : 'none';
+}
+
+function atualizarAvisoJanela(dentro) {
+  if (dentro === undefined) return;
+  dentroDaJanela = dentro;
+  const el = document.getElementById('janela-aviso');
+  el.textContent = dentro
+    ? '✓ Dentro da janela de horário configurada.'
+    : '⚠ Fora da janela de horário. O disparo manual funciona mesmo assim, mas será pedida uma confirmação.';
+  el.className = 'message ' + (dentro ? 'ok' : '');
+  el.style.display = 'block';
 }
 
 async function checarWhatsapp() {
@@ -107,6 +121,7 @@ async function acompanhar() {
   try {
     const res = await fetch('/api/sender/status');
     const job = await res.json();
+    atualizarAvisoJanela(job.dentroDaJanela);
 
     if (job.running) {
       msg('Disparo em andamento... (há um delay de 45-120s entre cada mensagem, pode demorar)', '');
@@ -125,6 +140,17 @@ async function acompanhar() {
 }
 
 document.getElementById('btn-disparar').addEventListener('click', async () => {
+  // Fora da janela o disparo funciona, mas pedimos uma confirmacao explicita
+  // para nao mandar mensagem comercial em horario ruim por acidente.
+  if (dentroDaJanela === false) {
+    const ok = confirm(
+      'Voce esta FORA da janela de horario configurada.\n\n' +
+      'O disparo vai acontecer mesmo assim (limite diario e delay continuam valendo).\n\n' +
+      'Disparar agora?'
+    );
+    if (!ok) return;
+  }
+
   const btn = document.getElementById('btn-disparar');
   btn.disabled = true;
   btn.textContent = 'Disparando...';
@@ -153,6 +179,7 @@ document.getElementById('btn-disparar').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/sender/status');
     const job = await res.json();
+    atualizarAvisoJanela(job.dentroDaJanela);
     if (job.running) {
       document.getElementById('btn-disparar').disabled = true;
       document.getElementById('btn-disparar').textContent = 'Disparando...';

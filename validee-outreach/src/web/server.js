@@ -12,7 +12,7 @@ const { fetchApifyUsage } = require('../apify-usage');
 const { computeReport } = require('../reports');
 const { scrapeLeads } = require('../scraper');
 const { startScheduler } = require('../scheduler');
-const { runSender } = require('../sender');
+const { runSender, isWithinSendingWindow } = require('../sender');
 const { seedConfigDir } = require('../bootstrap');
 const { parse } = require('csv-parse/sync');
 
@@ -225,7 +225,7 @@ app.post('/api/sender/send-now', (req, res) => {
   senderJob.result = null;
   senderJob.error = null;
 
-  runSender()
+  runSender({ ignoreWindow: true })
     .then((result) => {
       senderJob.result = { ...result, motivo: result.skippedReason ? MOTIVOS[result.skippedReason] || result.skippedReason : null };
     })
@@ -241,7 +241,7 @@ app.post('/api/sender/send-now', (req, res) => {
 });
 
 app.get('/api/sender/status', (req, res) => {
-  res.json(senderJob);
+  res.json({ ...senderJob, dentroDaJanela: isWithinSendingWindow(new Date()) });
 });
 
 app.listen(Number(PORT), () => {
