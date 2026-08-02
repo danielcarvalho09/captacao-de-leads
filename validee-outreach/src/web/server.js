@@ -189,3 +189,42 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('Erro nao tratado (uncaughtException):', err);
 });
+
+// --- Leads (lista de captados) ---
+
+app.get('/api/leads', (req, res) => {
+  try {
+    const leadsPath = path.resolve(process.cwd(), 'config/leads.csv');
+    if (!fs.existsSync(leadsPath)) {
+      return res.json({ leads: [] });
+    }
+    const csv = fs.readFileSync(leadsPath, 'utf8');
+    const lines = csv.trim().split('\n');
+    if (lines.length <= 1) {
+      return res.json({ leads: [] });
+    }
+    const headers = lines[0].split(',');
+    const leads = lines.slice(1).map(line => {
+      const values = line.split(',');
+      const lead = {};
+      headers.forEach((h, i) => {
+        lead[h.trim()] = values[i] ? values[i].trim().replace(/^"(.*)"$/, '$1') : '';
+      });
+      return lead;
+    });
+    res.json({ leads });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Disparar agora (manual, sem agendador) ---
+
+app.post('/api/sender/send-now', async (req, res) => {
+  try {
+    const result = await runSender();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
