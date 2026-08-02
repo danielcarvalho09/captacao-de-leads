@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Disparar Agora — Validee Outreach</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .send-panel { max-width: 400px; margin: 2rem auto; }
+    .btn-send {
+      width: 100%;
+      padding: 1rem;
+      background: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-send:hover:not(:disabled) { background: #45a049; }
+    .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status-message {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      border-radius: 4px;
+      display: none;
+    }
+    .status-message.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #4caf50; }
+    .status-message.error { background: #ffebee; color: #c62828; border: 1px solid #f44336; }
+    .status-message.info { background: #e3f2fd; color: #1565c0; border: 1px solid #2196f3; }
+    .info-box {
+      background: var(--bg-secondary);
+      padding: 1rem;
+      border-radius: 4px;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Disparar Agora</h1>
+
+    <div class="send-panel">
+      <div class="info-box">
+        <strong>ℹ️ Como funciona:</strong><br>
+        Clica no botão abaixo pra disparar as mensagens para os leads pendentes agora, respeitando o limite diário e as janelas de envio configuradas.
+      </div>
+
+      <button class="btn-send" id="btn-send" onclick="dispararAgora()">
+        📤 Disparar Agora
+      </button>
+
+      <div id="status-message" class="status-message"></div>
+
+      <div id="result-details" style="margin-top: 1.5rem; display: none; background: var(--bg-secondary); padding: 1rem; border-radius: 4px; font-size: 0.9rem;">
+        <strong>Resultado:</strong>
+        <div id="result-text" style="margin-top: 0.5rem; line-height: 1.6;"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    async function dispararAgora() {
+      const btn = document.getElementById('btn-send');
+      const statusMsg = document.getElementById('status-message');
+      const resultDetails = document.getElementById('result-details');
+      const resultText = document.getElementById('result-text');
+
+      btn.disabled = true;
+      statusMsg.style.display = 'none';
+      resultDetails.style.display = 'none';
+
+      try {
+        statusMsg.textContent = '⏳ Disparando...';
+        statusMsg.className = 'status-message info';
+        statusMsg.style.display = 'block';
+
+        const res = await fetch('/api/sender/send-now', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Erro ao disparar');
+        }
+
+        statusMsg.textContent = '✅ Disparadas com sucesso!';
+        statusMsg.className = 'status-message success';
+
+        resultText.innerHTML = `
+          <strong>Enviadas:</strong> ${data.sent || 0}<br>
+          <strong>Fora da janela de horário:</strong> ${data.outside_window || 0}<br>
+          <strong>Limite diário atingido:</strong> ${data.daily_limit_reached || 0}<br>
+          <strong>Sem mensagem configurada:</strong> ${data.no_message || 0}<br>
+          <strong>Erros:</strong> ${data.errors || 0}
+        `;
+        resultDetails.style.display = 'block';
+      } catch (err) {
+        statusMsg.textContent = '❌ ' + err.message;
+        statusMsg.className = 'status-message error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

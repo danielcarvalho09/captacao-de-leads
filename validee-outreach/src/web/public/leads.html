@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Leads — Validee Outreach</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid var(--border); padding: 0.75rem; text-align: left; }
+    th { background: var(--bg-secondary); font-weight: bold; }
+    tr:hover { background: var(--bg-secondary); }
+    .status-pendente { color: #ffa500; }
+    .status-enviado { color: #4caf50; }
+    .status-erro { color: #f44336; }
+    .empty { text-align: center; color: var(--text-secondary); padding: 2rem; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .stat-card { background: var(--bg-secondary); padding: 1rem; border-radius: 4px; }
+    .stat-number { font-size: 1.5rem; font-weight: bold; }
+    .stat-label { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Leads Captados</h1>
+
+    <div id="stats" class="stats">
+      <div class="stat-card">
+        <div class="stat-number" id="total-count">0</div>
+        <div class="stat-label">Total</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="pendente-count">0</div>
+        <div class="stat-label">Pendentes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="enviado-count">0</div>
+        <div class="stat-label">Enviados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="erro-count">0</div>
+        <div class="stat-label">Erros</div>
+      </div>
+    </div>
+
+    <div id="loading" style="display:none; text-align:center; color: var(--text-secondary);">
+      Carregando leads...
+    </div>
+
+    <div id="empty" class="empty" style="display:none;">
+      Nenhum lead captado ainda. Rode o scraper primeiro.
+    </div>
+
+    <table id="leads-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Telefone</th>
+          <th>Rating</th>
+          <th>Endereço</th>
+          <th>Status</th>
+          <th>Atualizado</th>
+        </tr>
+      </thead>
+      <tbody id="leads-body">
+      </tbody>
+    </table>
+  </main>
+
+  <script>
+    async function loadLeads() {
+      const loading = document.getElementById('loading');
+      const empty = document.getElementById('empty');
+      const table = document.getElementById('leads-table');
+      const body = document.getElementById('leads-body');
+
+      loading.style.display = 'block';
+      try {
+        const res = await fetch('/api/leads');
+        const data = await res.json();
+
+        if (!data.leads || data.leads.length === 0) {
+          empty.style.display = 'block';
+          loading.style.display = 'none';
+          return;
+        }
+
+        document.getElementById('total-count').textContent = data.leads.length;
+        document.getElementById('pendente-count').textContent = data.leads.filter(l => l.status === 'pendente').length;
+        document.getElementById('enviado-count').textContent = data.leads.filter(l => l.status === 'enviado').length;
+        document.getElementById('erro-count').textContent = data.leads.filter(l => l.status === 'erro').length;
+
+        body.innerHTML = '';
+        data.leads.forEach(lead => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${lead.nome || '—'}</td>
+            <td>${lead.telefone || '—'}</td>
+            <td>${lead.rating || '—'}</td>
+            <td>${lead.endereco || '—'}</td>
+            <td class="status-${lead.status || 'pendente'}">${lead.status || 'pendente'}</td>
+            <td>${lead.atualizado_em ? new Date(lead.atualizado_em).toLocaleDateString('pt-BR') : '—'}</td>
+          `;
+          body.appendChild(row);
+        });
+
+        table.style.display = 'table';
+      } catch (err) {
+        console.error('Erro ao carregar leads:', err);
+        empty.textContent = 'Erro ao carregar leads: ' + err.message;
+        empty.style.display = 'block';
+      } finally {
+        loading.style.display = 'none';
+      }
+    }
+
+    loadLeads();
+  </script>
+</body>
+</html>
