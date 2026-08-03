@@ -239,9 +239,28 @@ async function loadConfig() {
   const res = await fetch('/api/apify/config');
   const data = await res.json();
 
-  document.getElementById('token-hint').textContent = data.config.hasToken
-    ? `Token atual termina em ${data.config.tokenPreview}. Deixe o campo em branco para manter.`
-    : 'Nenhum token configurado ainda.';
+  const origem = data.config.tokenOrigem;
+  const campoToken = document.getElementById('token');
+  if (origem === 'ambiente') {
+    // Com APIFY_TOKEN definido no ambiente, nada digitado aqui tem efeito —
+    // melhor desabilitar do que deixar o usuario salvar em vao.
+    document.getElementById('token-hint').textContent =
+      `Token vindo da variável de ambiente APIFY_TOKEN (termina em ${data.config.tokenPreview}). ` +
+      'Como está definido no ambiente, ele tem precedência e este campo fica desativado. ' +
+      'Para editar pelo painel, remova a variável APIFY_TOKEN do serviço.';
+    if (campoToken) {
+      campoToken.value = '';
+      campoToken.disabled = true;
+      campoToken.placeholder = 'definido pela variável APIFY_TOKEN';
+    }
+  } else if (data.config.hasToken) {
+    document.getElementById('token-hint').textContent =
+      `Token atual termina em ${data.config.tokenPreview}. Deixe o campo em branco para manter.`;
+    if (campoToken) campoToken.disabled = false;
+  } else {
+    document.getElementById('token-hint').textContent = 'Nenhum token configurado ainda.';
+    if (campoToken) campoToken.disabled = false;
+  }
   document.getElementById('actor-id').value = data.config.actorId;
   document.getElementById('search-term').value = data.config.searchTerm;
   document.getElementById('search-location').value = data.config.searchLocation;

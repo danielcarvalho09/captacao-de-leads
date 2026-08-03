@@ -57,11 +57,20 @@ DASHBOARD_USER=escolha_um_usuario
 DASHBOARD_PASSWORD=escolha_uma_senha_forte
 ENABLE_SCHEDULER=true
 TZ=America/Sao_Paulo
+APIFY_TOKEN=seu_token_do_apify
 ```
 
 > **`ENABLE_SCHEDULER=true` é o que liga o disparo automático.** Sem essa variável o painel
 > funciona normalmente, mas nada é enviado sozinho — só pelo botão "Disparar agora". Confira no log
 > do serviço: no boot ele imprime `Disparo automatico LIGADO` ou `DESLIGADO`.
+>
+> **`APIFY_TOKEN`** definido aqui **tem precedência** sobre o painel e sobrevive a deploy, porque
+> variável de ambiente vive na configuração do serviço, não no disco do container. É a forma
+> recomendada em servidor. Quando definido, o campo de token no painel fica desativado.
+>
+> Isso resolve o token — mas **não resolve os leads**: dados gerados não cabem em variável de
+> ambiente. Sem o volume em `/app/config` você perde os leads e, pior, o `log-envios.csv`, que é o
+> que impede mandar mensagem repetida para quem já foi contatado.
 >
 > **`TZ`** já vem embutido na imagem como `America/Sao_Paulo`. Só defina aqui se você operar em
 > outro fuso. Se o fuso estiver errado, as janelas de horário não batem: o container em UTC

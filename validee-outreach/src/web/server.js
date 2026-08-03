@@ -17,6 +17,7 @@ const { seedConfigDir } = require('../bootstrap');
 const { normalizePhone } = require('../phone');
 const autoScrape = require('../auto-scrape');
 const { parse } = require('csv-parse/sync');
+const { stringify } = require('csv-stringify/sync');
 
 const {
   MESSAGE_TEMPLATE_PATH = 'config/message-template.txt',
@@ -70,7 +71,9 @@ seedConfigDir();
 
 const app = express();
 app.use(requireAuth);
-app.use(express.json());
+// 10mb: o corpo do restore leva o leads.csv e o log de envios inteiros,
+// que passam facil dos 100kb padrao do express.
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- WhatsApp ---
@@ -237,6 +240,96 @@ app.get('/api/leads', (req, res) => {
       { pendente: 0, enviado: 0, erro: 0 }
     );
     res.json({ leads, total: leads.length, porStatus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Backup / restauracao dos dados ---
+// Leads e log de envios sao dados gerados: nao cabem em variavel de ambiente e
+// nao vao para o git. Sem volume persistente eles somem a cada deploy — e o
+// log sumir e o pior caso, porque e ele que impede mandar mensagem repetida.
+// Estas rotas dao uma rede de seguranca manual enquanto isso.
+
+function lerCsvSeExistir(relativo) {
+  const caminho = path.resolve(process.cwd(), relativo);
+  return fs.existsSync(caminho) ? fs.readFileSync(caminho, 'utf8') : '';
+}
+
+app.get('/api/backup', (req, res) => {
+  try {
+    res.json({
+      geradoEm: new Date().toISOString(),
+      leadsCsv: lerCsvSeExistir(process.env.LEADS_CSV_PATH || 'config/leads.csv'),
+      logEnviosCsv: lerCsvSeExistir(process.env.LOG_CSV_PATH || 'config/log-envios.csv'),
+      messageTemplate: lerCsvSeExistir(MESSAGE_TEMPLATE_PATH),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/backup/restore', (req, res) => {
+  try {
+    const { leadsCsv, logEnviosCsv } = req.body || {};
+    if (!leadsCsv && !logEnviosCsv) {
+      res.status(400).json({ error: 'O arquivo de backup nao tem leads nem log de envios.' });
+      return;
+    }
+
+    const resumo = {};
+
+    // O log e restaurado inteiro: ele so cresce, e quanto mais completo,
+    // melhor a protecao contra reenvio.
+    if (logEnviosCsv) {
+      const caminho = path.resolve(process.cwd(), process.env.LOG_CSV_PATH || 'config/log-envios.csv');
+      fs.mkdirSync(path.dirname(caminho), { recursive: true });
+      fs.writeFileSync(caminho, logEnviosCsv, 'utf8');
+      resumo.logRestaurado = parse(logEnviosCsv, { columns: true, skip_empty_lines: true }).length;
+    }
+
+    if (leadsCsv) {
+      const caminho = path.resolve(process.cwd(), process.env.LEADS_CSV_PATH || 'config/leads.csv');
+      const doBackup = parse(leadsCsv, { columns: true, skip_empty_lines: true });
+      const atuais = fs.existsSync(caminho)
+        ? parse(fs.readFileSync(caminho, 'utf8'), { columns: true, skip_empty_lines: true })
+        : [];
+
+      // Merge por telefone normalizado. Na duvida entre "pendente" e
+      // "enviado", vence "enviado": e sempre mais seguro deixar de mandar
+      // para alguem do que mandar duas vezes.
+      const porTelefone = new Map();
+      const juntar = (lead) => {
+        const chave = normalizePhone(lead.telefone);
+        if (!chave) return;
+        const existente = porTelefone.get(chave);
+        if (!existente) {
+          porTelefone.set(chave, { ...lead, telefone: chave });
+          return;
+        }
+        const jaContatado = existente.status === 'enviado' || lead.status === 'enviado';
+        porTelefone.set(chave, {
+          ...existente,
+          status: jaContatado ? 'enviado' : existente.status,
+          atualizado_em: existente.atualizado_em || lead.atualizado_em || '',
+        });
+      };
+      atuais.forEach(juntar);
+      doBackup.forEach(juntar);
+
+      const merged = [...porTelefone.values()];
+      fs.mkdirSync(path.dirname(caminho), { recursive: true });
+      fs.writeFileSync(
+        caminho,
+        stringify(merged, { header: true, columns: ['nome', 'telefone', 'rating', 'endereco', 'status', 'atualizado_em'] }),
+        'utf8'
+      );
+      resumo.leadsAntes = atuais.length;
+      resumo.leadsNoBackup = doBackup.length;
+      resumo.leadsDepois = merged.length;
+    }
+
+    res.json({ ok: true, ...resumo });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

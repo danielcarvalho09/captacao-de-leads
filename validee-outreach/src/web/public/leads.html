@@ -65,6 +65,27 @@
       </table>
     </div>
   </div>
+
+  <div class="card">
+    <strong>Backup dos leads</strong>
+    <p class="hint">
+      Leads e log de envios não cabem em variável de ambiente e não vão para o Git — sem volume
+      persistente no servidor, eles somem a cada deploy. Baixe um backup de vez em quando,
+      principalmente antes de atualizar o sistema.
+    </p>
+    <p class="hint">
+      O backup inclui o <strong>log de envios</strong>, que é o que impede mandar mensagem repetida
+      para quem já foi contatado. Restaurar faz merge: leads novos entram, e quem estiver marcado
+      como enviado em qualquer um dos lados continua marcado como enviado.
+    </p>
+
+    <div class="actions">
+      <button type="button" id="btn-backup" class="primary">Baixar backup</button>
+      <button type="button" id="btn-restore">Restaurar backup</button>
+      <input type="file" id="file-restore" accept="application/json,.json" style="display:none" />
+    </div>
+    <div id="backup-msg" class="message" style="display:none;"></div>
+  </div>
 </main>
 
 <script>
@@ -146,6 +167,72 @@ document.querySelectorAll('[data-filtro]').forEach((btn) => {
     filtroAtual = btn.dataset.filtro;
     render();
   });
+});
+
+function backupMsg(t, tipo) {
+  const el = document.getElementById('backup-msg');
+  el.textContent = t;
+  el.className = 'message ' + (tipo || '');
+  el.style.display = t ? 'block' : 'none';
+}
+
+document.getElementById('btn-backup').addEventListener('click', async () => {
+  backupMsg('Gerando backup...', '');
+  try {
+    const res = await fetch('/api/backup');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'validee-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    backupMsg('Backup baixado. Guarde esse arquivo fora do servidor.', 'ok');
+  } catch (err) {
+    backupMsg('Erro ao gerar backup: ' + err.message, 'error');
+  }
+});
+
+document.getElementById('btn-restore').addEventListener('click', () => {
+  document.getElementById('file-restore').click();
+});
+
+document.getElementById('file-restore').addEventListener('change', async (ev) => {
+  const arquivo = ev.target.files[0];
+  if (!arquivo) return;
+  if (!confirm('Restaurar este backup? Os leads atuais serão mesclados com os do arquivo.')) {
+    ev.target.value = '';
+    return;
+  }
+
+  backupMsg('Restaurando...', '');
+  try {
+    const conteudo = JSON.parse(await arquivo.text());
+    const res = await fetch('/api/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(conteudo),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+
+    let txt = 'Backup restaurado. ';
+    if (d.leadsDepois !== undefined) {
+      txt += `Leads: ${d.leadsAntes} no servidor + ${d.leadsNoBackup} no backup = ${d.leadsDepois} após o merge. `;
+    }
+    if (d.logRestaurado !== undefined) {
+      txt += `${d.logRestaurado} registro(s) de envio restaurado(s).`;
+    }
+    backupMsg(txt, 'ok');
+    carregar();
+  } catch (err) {
+    backupMsg('Erro ao restaurar: ' + err.message, 'error');
+  } finally {
+    ev.target.value = '';
+  }
 });
 
 document.getElementById('btn-reload').addEventListener('click', carregar);

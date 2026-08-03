@@ -45,15 +45,28 @@ function normalize(raw) {
   return { token, actorId, searchTerm, searchLocation, maxLeads, minRating, maxRating };
 }
 
+// APIFY_TOKEN no ambiente VENCE o que estiver salvo no arquivo.
+// Motivo: num container sem volume persistente, config/apify-config.json e
+// recriado vazio a cada deploy e o token some. A variavel de ambiente vive na
+// configuracao do servico (painel do EasyPanel), nao no disco do container,
+// entao sobrevive a deploy. Quem define APIFY_TOKEN quer que ele seja usado.
+function tokenDoAmbiente() {
+  const t = (process.env.APIFY_TOKEN || '').trim();
+  return t || null;
+}
+
 function loadConfig() {
+  let config;
   if (!fs.existsSync(CONFIG_PATH)) {
-    const initial = normalize(defaults());
+    config = normalize(defaults());
     fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(initial, null, 2), 'utf8');
-    return initial;
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+  } else {
+    config = normalize(JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')));
   }
-  const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-  return normalize(raw);
+
+  const doAmbiente = tokenDoAmbiente();
+  return doAmbiente ? { ...config, token: doAmbiente } : config;
 }
 
 // partial.token vazio/ausente mantem o token ja salvo (o formulario web nao
@@ -79,9 +92,14 @@ function saveConfig(partial) {
 function getPublicConfig() {
   const config = loadConfig();
   const hasToken = Boolean(config.token);
+  const doAmbiente = tokenDoAmbiente();
   return {
     hasToken,
     tokenPreview: hasToken ? `••••${config.token.slice(-4)}` : null,
+    // 'ambiente' significa que o painel nao consegue sobrescrever: quem manda
+    // e a variavel APIFY_TOKEN. Precisa aparecer na tela para o usuario nao
+    // ficar salvando um token que nunca sera usado.
+    tokenOrigem: doAmbiente ? 'ambiente' : hasToken ? 'arquivo' : 'nenhum',
     actorId: config.actorId,
     searchTerm: config.searchTerm,
     searchLocation: config.searchLocation,
@@ -93,6 +111,7 @@ function getPublicConfig() {
 
 module.exports = {
   loadConfig,
+  tokenDoAmbiente,
   saveConfig,
   getPublicConfig,
   MAX_LEADS_BOUNDS,
