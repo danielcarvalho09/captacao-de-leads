@@ -268,10 +268,46 @@ app.post('/api/auto-scrape', (req, res) => {
   }
 });
 
+// --- Diagnostico (por que o disparo automatico nao rodou?) ---
+
+app.get('/api/diagnostics', (req, res) => {
+  try {
+    const agora = new Date();
+    const cfg = settings.loadSettings();
+    const wpp = whatsapp.getState();
+
+    res.json({
+      agendadorLigado: ENABLE_SCHEDULER === 'true',
+      horaDoServidor: agora.toLocaleString('pt-BR'),
+      fusoHorario: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      dentroDaJanela: isWithinSendingWindow(agora),
+      janelas: cfg.windows,
+      limiteDiario: cfg.dailyLimit,
+      whatsapp: { status: wpp.status, numero: wpp.info ? wpp.info.number : null },
+      leadsPendentes: autoScrape.countPendingLeads(),
+      captacaoAutomatica: autoScrape.loadConfig().enabled,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(Number(PORT), () => {
   console.log(`Painel web da Validee rodando em http://localhost:${PORT}`);
   if (!DASHBOARD_USER || !DASHBOARD_PASSWORD) {
     console.warn('Aviso: DASHBOARD_USER/DASHBOARD_PASSWORD nao definidos — o painel esta SEM SENHA. Configure antes de expor a um servidor publico.');
+  }
+
+  // Um disparo automatico que nao acontece costuma ser uma destas duas coisas:
+  // o agendador desligado, ou o fuso do container diferente do fuso das
+  // janelas. Ambos ficam explicitos aqui para nao virar caca ao fantasma.
+  const fuso = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  console.log(`Fuso horario do servidor: ${fuso} — agora sao ${new Date().toLocaleString('pt-BR')}`);
+  if (ENABLE_SCHEDULER === 'true') {
+    const janelas = settings.loadSettings().windows;
+    console.log(`Disparo automatico LIGADO. Janelas (neste fuso): ${janelas.map((w) => `${w.start}-${w.end}`).join(', ')}`);
+  } else {
+    console.warn('Disparo automatico DESLIGADO (ENABLE_SCHEDULER != "true"). Nada sera enviado sozinho — so pelo botao "Disparar agora".');
   }
 });
 

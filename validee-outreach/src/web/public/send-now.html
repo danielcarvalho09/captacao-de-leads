@@ -44,6 +44,11 @@
 
     <div id="msg" class="message" style="display:none;"></div>
 
+    <details style="margin-top:16px">
+      <summary>Diagnóstico do disparo automático</summary>
+      <div id="diag" class="hint" style="margin-top:8px">carregando...</div>
+    </details>
+
     <div id="resumo" class="resumo" style="display:none;">
       <div><div class="n" id="r-enviadas">0</div><div class="l">Enviadas agora</div></div>
       <div><div class="n" id="r-pendentes">0</div><div class="l">Ainda pendentes</div></div>
@@ -171,6 +176,31 @@ document.getElementById('btn-disparar').addEventListener('click', async () => {
     btn.textContent = 'Disparar agora';
   }
 });
+
+async function carregarDiagnostico() {
+  const el = document.getElementById('diag');
+  try {
+    const res = await fetch('/api/diagnostics');
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+
+    const linha = (rotulo, valor, ok) =>
+      '<div>' + (ok === undefined ? '' : (ok ? '✓ ' : '✗ ')) + '<strong>' + rotulo + ':</strong> ' + valor + '</div>';
+
+    el.innerHTML =
+      linha('Agendador automático', d.agendadorLigado ? 'ligado' : 'DESLIGADO — defina ENABLE_SCHEDULER=true', d.agendadorLigado)
+      + linha('Hora do servidor', d.horaDoServidor + ' (' + d.fusoHorario + ')', d.fusoHorario === 'America/Sao_Paulo')
+      + linha('Janelas configuradas', d.janelas.map(function (w) { return w.start + '-' + w.end; }).join(', '))
+      + linha('Agora está na janela?', d.dentroDaJanela ? 'sim' : 'não')
+      + linha('WhatsApp', d.whatsapp.status + (d.whatsapp.numero ? ' (' + d.whatsapp.numero + ')' : ''), d.whatsapp.status === 'ready')
+      + linha('Leads pendentes', d.leadsPendentes)
+      + linha('Limite diário', d.limiteDiario + ' mensagens')
+      + linha('Captação automática', d.captacaoAutomatica ? 'ligada' : 'desligada');
+  } catch (err) {
+    el.textContent = 'Erro ao carregar diagnóstico: ' + err.message;
+  }
+}
+carregarDiagnostico();
 
 // Se a pagina for aberta com um disparo ja rodando (ex: outro navegador),
 // retoma o acompanhamento em vez de mostrar a tela zerada.

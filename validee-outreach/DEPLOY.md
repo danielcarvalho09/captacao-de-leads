@@ -56,7 +56,16 @@ PORT=3000
 DASHBOARD_USER=escolha_um_usuario
 DASHBOARD_PASSWORD=escolha_uma_senha_forte
 ENABLE_SCHEDULER=true
+TZ=America/Sao_Paulo
 ```
+
+> **`ENABLE_SCHEDULER=true` é o que liga o disparo automático.** Sem essa variável o painel
+> funciona normalmente, mas nada é enviado sozinho — só pelo botão "Disparar agora". Confira no log
+> do serviço: no boot ele imprime `Disparo automatico LIGADO` ou `DESLIGADO`.
+>
+> **`TZ`** já vem embutido na imagem como `America/Sao_Paulo`. Só defina aqui se você operar em
+> outro fuso. Se o fuso estiver errado, as janelas de horário não batem: o container em UTC
+> enxerga 15:30 quando em Brasília são 12:30, e o disparo nunca acontece na hora certa.
 
 `DASHBOARD_USER`/`DASHBOARD_PASSWORD` são **obrigatórios** aqui — sem eles, o painel fica exposto
 publicamente sem senha assim que você configurar o domínio no passo A.5. O token do Apify, a
