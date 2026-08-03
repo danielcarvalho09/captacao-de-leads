@@ -40,6 +40,32 @@
 
     <div id="message" style="display:none;"></div>
   </div>
+
+  <div class="card">
+    <strong>Testar a conexão</strong>
+    <p class="hint">
+      Duas verificações diferentes. A primeira não envia nada — serve para detectar sessão
+      "fantasma", quando o painel diz conectado mas a sessão morreu por baixo. A segunda é o teste
+      de verdade: manda uma mensagem real.
+    </p>
+
+    <div class="actions">
+      <button type="button" id="btn-health">Verificar sessão (não envia nada)</button>
+    </div>
+    <div id="health-msg" class="message" style="display:none;"></div>
+
+    <label style="margin-top:16px">
+      Enviar mensagem de teste para
+      <input type="text" id="test-numero" placeholder="deixe em branco para mandar ao próprio número conectado" />
+      <span class="hint">
+        Não passa pelo disparo: não mexe nos leads, no log de envios nem na cota diária.
+      </span>
+    </label>
+    <div class="actions">
+      <button type="button" id="btn-test" class="primary">Enviar mensagem de teste</button>
+    </div>
+    <div id="test-msg" class="message" style="display:none;"></div>
+  </div>
 </main>
 <script>
 const statusLabels = {
@@ -121,6 +147,59 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 
 refreshState();
 setInterval(refreshState, 3000);
+</script>
+
+<script>
+function testeMsg(id, texto, tipo) {
+  const el = document.getElementById(id);
+  el.textContent = texto;
+  el.className = 'message ' + (tipo || '');
+  el.style.display = texto ? 'block' : 'none';
+}
+
+document.getElementById('btn-health').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-health');
+  btn.disabled = true;
+  testeMsg('health-msg', 'Perguntando ao WhatsApp...', '');
+  try {
+    const res = await fetch('/api/whatsapp/health', { method: 'POST' });
+    const d = await res.json();
+    if (d.ok) {
+      const quem = d.info && d.info.number ? ' — ' + d.info.number : '';
+      testeMsg('health-msg', '✓ Sessão ativa e respondendo' + quem + '. (' + d.estadoReal + ')', 'ok');
+    } else {
+      testeMsg('health-msg', '✗ ' + d.detalhe, 'error');
+    }
+  } catch (err) {
+    testeMsg('health-msg', 'Erro: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('btn-test').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-test');
+  const numero = document.getElementById('test-numero').value.trim();
+  const alvo = numero || 'o próprio número conectado';
+  if (!confirm('Enviar uma mensagem de teste para ' + alvo + '?')) return;
+
+  btn.disabled = true;
+  testeMsg('test-msg', 'Enviando...', '');
+  try {
+    const res = await fetch('/api/whatsapp/test-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numero }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    testeMsg('test-msg', '✓ Mensagem enviada para ' + d.enviadoPara + '. Confira no WhatsApp — se chegou, o disparo está 100%.', 'ok');
+  } catch (err) {
+    testeMsg('test-msg', '✗ ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
 </script>
 </body>
 </html>

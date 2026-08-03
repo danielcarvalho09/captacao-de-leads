@@ -14,6 +14,7 @@ const { scrapeLeads } = require('../scraper');
 const { startScheduler } = require('../scheduler');
 const { runSender, isWithinSendingWindow } = require('../sender');
 const { seedConfigDir } = require('../bootstrap');
+const { normalizePhone } = require('../phone');
 const autoScrape = require('../auto-scrape');
 const { parse } = require('csv-parse/sync');
 
@@ -88,6 +89,48 @@ app.post('/api/whatsapp/connect', (req, res) => {
 app.post('/api/whatsapp/logout', async (req, res) => {
   await whatsapp.logout();
   res.json(whatsapp.getState());
+});
+
+// --- Teste da conexao do WhatsApp ---
+
+app.post('/api/whatsapp/health', async (req, res) => {
+  try {
+    res.json(await whatsapp.healthCheck());
+  } catch (err) {
+    res.status(500).json({ ok: false, detalhe: err.message });
+  }
+});
+
+app.post('/api/whatsapp/test-message', async (req, res) => {
+  try {
+    const { numero } = req.body || {};
+    const estado = whatsapp.getState();
+
+    // Checa a conexao ANTES do numero: se o WhatsApp esta fora do ar, dizer
+    // "informe um numero" mandaria o usuario resolver o problema errado.
+    if (estado.status !== 'ready') {
+      res.status(409).json({
+        error: `WhatsApp nao esta conectado (estado atual: "${estado.status}"). Conecte antes de testar.`,
+      });
+      return;
+    }
+
+    // Sem numero informado, manda para o proprio numero conectado: e o teste
+    // mais seguro possivel, nao incomoda ninguem.
+    const alvo = normalizePhone(numero || (estado.info && estado.info.number) || '');
+    if (!alvo) {
+      res.status(400).json({ error: 'Informe um numero para o teste.' });
+      return;
+    }
+
+    const agora = new Date().toLocaleString('pt-BR');
+    const texto = `[Validee] Teste de conexao do sistema de prospeccao — ${agora}. Se voce recebeu isto, o disparo esta funcionando.`;
+
+    const r = await whatsapp.sendTestMessage(alvo, texto);
+    res.json({ ok: true, ...r, texto });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Copy (template da mensagem) ---

@@ -170,6 +170,74 @@ function autoConnectIfSessionExists() {
   return true;
 }
 
+// O estado interno pode dizer "ready" enquanto a sessao ja morreu por baixo
+// (Chrome derrubado, celular deslogado, rede caida) — o painel mostraria
+// "conectado" e o disparo falharia so na hora do envio. Estas duas funcoes
+// perguntam ao cliente de verdade, em vez de confiar no estado guardado.
+
+function comTimeout(promise, ms, mensagem) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(mensagem)), ms)),
+  ]);
+}
+
+// Verificacao leve: NAO envia mensagem nenhuma. Pergunta o estado real da
+// conexao ao whatsapp-web.js.
+async function healthCheck() {
+  if (!clientInstance) {
+    return { ok: false, motivo: 'sem-cliente', detalhe: 'Nenhuma sessao iniciada. Clique em Conectar.' };
+  }
+  if (state.status !== 'ready') {
+    return { ok: false, motivo: 'nao-pronto', detalhe: `Sessao em estado "${state.status}".` };
+  }
+
+  try {
+    const estadoReal = await comTimeout(
+      clientInstance.getState(),
+      15000,
+      'O WhatsApp nao respondeu em 15s (sessao provavelmente travada).'
+    );
+    const ok = estadoReal === 'CONNECTED';
+    return {
+      ok,
+      estadoReal,
+      info: state.info,
+      detalhe: ok
+        ? 'Sessao ativa e respondendo.'
+        : `O WhatsApp respondeu "${estadoReal}" em vez de CONNECTED.`,
+    };
+  } catch (err) {
+    return { ok: false, motivo: 'sem-resposta', detalhe: err.message };
+  }
+}
+
+// Teste de ponta a ponta: envia uma mensagem real para o numero informado.
+// Nao passa pelo sender — nao mexe no leads.csv, no log de envios nem na
+// cota diaria. E so um teste de conexao.
+async function sendTestMessage(numeroDigits, texto) {
+  if (!clientInstance || state.status !== 'ready') {
+    throw new Error('WhatsApp nao esta conectado. Conecte antes de testar.');
+  }
+
+  const numberId = await comTimeout(
+    clientInstance.getNumberId(numeroDigits),
+    20000,
+    'O WhatsApp nao respondeu ao verificar o numero (20s).'
+  );
+  if (!numberId) {
+    throw new Error(`O numero ${numeroDigits} nao tem WhatsApp (ou esta em formato invalido).`);
+  }
+
+  await comTimeout(
+    clientInstance.sendMessage(numberId._serialized, texto),
+    30000,
+    'O envio da mensagem de teste passou de 30s sem confirmar.'
+  );
+
+  return { enviadoPara: numeroDigits };
+}
+
 module.exports = {
   getClient,
   destroyClient,
@@ -179,4 +247,6 @@ module.exports = {
   onStateChange,
   hasSavedSession,
   autoConnectIfSessionExists,
+  healthCheck,
+  sendTestMessage,
 };
