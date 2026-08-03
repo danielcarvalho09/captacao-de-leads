@@ -11,3 +11,6 @@ config/log-envios.csv
 
 # Contem a chave de API do Apify em texto plano
 config/apify-config.json
+
+# Estado da captacao automatica (fila de buscas e historico de execucao)
+config/auto-scrape.json

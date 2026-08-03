@@ -14,6 +14,7 @@ const { scrapeLeads } = require('../scraper');
 const { startScheduler } = require('../scheduler');
 const { runSender, isWithinSendingWindow } = require('../sender');
 const { seedConfigDir } = require('../bootstrap');
+const autoScrape = require('../auto-scrape');
 const { parse } = require('csv-parse/sync');
 
 const {
@@ -242,6 +243,29 @@ app.post('/api/sender/send-now', (req, res) => {
 
 app.get('/api/sender/status', (req, res) => {
   res.json({ ...senderJob, dentroDaJanela: isWithinSendingWindow(new Date()) });
+});
+
+// --- Captacao automatica (cron do Apify) ---
+
+app.get('/api/auto-scrape', (req, res) => {
+  try {
+    res.json({
+      config: autoScrape.loadConfig(),
+      bounds: autoScrape.BOUNDS,
+      leadsPendentes: autoScrape.countPendingLeads(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auto-scrape', (req, res) => {
+  try {
+    const config = autoScrape.saveConfig(req.body || {});
+    res.json({ config, leadsPendentes: autoScrape.countPendingLeads() });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.listen(Number(PORT), () => {

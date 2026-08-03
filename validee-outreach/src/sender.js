@@ -5,6 +5,7 @@ const { parse } = require('csv-parse/sync');
 const { stringify } = require('csv-stringify/sync');
 const { getClient } = require('./whatsapp');
 const { loadSettings, parseTimeToMinutes } = require('./settings');
+const { normalizePhone } = require('./phone');
 
 const {
   LEADS_CSV_PATH = 'config/leads.csv',
@@ -114,14 +115,20 @@ function personalize(template, nome) {
   return template.replace(/\{nome\}/g, nome || 'time');
 }
 
-// Normaliza o telefone para o formato aceito pelo whatsapp-web.js (DDI+DDD+numero, so digitos).
-// Se vier sem o codigo do Brasil (55), assume Brasil e adiciona.
-function toDigitsWithCountryCode(telefoneRaw) {
-  let digits = String(telefoneRaw || '').replace(/\D/g, '');
-  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
-    digits = `55${digits}`;
+// Telefones ja contatados, lidos do log de envios. Esta e a trava mais forte
+// contra mensagem repetida: mesmo que o leads.csv seja recriado, perca o
+// status ou ganhe uma linha duplicada, quem ja aparece aqui nao recebe de novo.
+function loadContactedPhones() {
+  const logPath = resolvePath(LOG_CSV_PATH);
+  if (!fs.existsSync(logPath)) {
+    return new Set();
   }
-  return digits;
+  const content = fs.readFileSync(logPath, 'utf8');
+  if (!content.trim()) {
+    return new Set();
+  }
+  const rows = parse(content, { columns: true, skip_empty_lines: true });
+  return new Set(rows.filter((r) => r.status === 'enviado').map((r) => normalizePhone(r.telefone)));
 }
 
 // ignoreWindow=true e o disparo manual ("Disparar agora" no painel e o CLI
@@ -129,7 +136,7 @@ function toDigitsWithCountryCode(telefoneRaw) {
 // horario nao se aplica. O limite diario e o delay aleatorio continuam
 // valendo nos dois modos — sao eles que protegem o numero de ban. O disparo
 // automatico (scheduler) nunca ignora a janela.
-async function runSender({ ignoreWindow = false } = {}) {
+async function executarDisparo({ ignoreWindow = false } = {}) {
   const settings = loadSettings();
 
   if (!ignoreWindow && !isWithinSendingWindow(new Date(), settings.windows)) {
@@ -141,7 +148,27 @@ async function runSender({ ignoreWindow = false } = {}) {
   }
 
   const leads = loadLeads();
-  const pending = leads.filter((l) => l.status !== 'enviado' && l.status !== 'erro');
+  const contacted = loadContactedPhones();
+  const vistosNestaFila = new Set();
+
+  const pending = leads.filter((lead) => {
+    if (lead.status === 'enviado' || lead.status === 'erro') {
+      return false;
+    }
+    const phone = normalizePhone(lead.telefone);
+    // Ja recebeu mensagem em alguma execucao anterior (log de envios).
+    if (contacted.has(phone)) {
+      console.log(`Pulando ${lead.nome} (${lead.telefone}): este numero ja foi contatado antes.`);
+      return false;
+    }
+    // Mesmo numero aparecendo duas vezes no proprio CSV.
+    if (vistosNestaFila.has(phone)) {
+      console.log(`Pulando ${lead.nome} (${lead.telefone}): numero duplicado no leads.csv.`);
+      return false;
+    }
+    vistosNestaFila.add(phone);
+    return true;
+  });
 
   if (pending.length === 0) {
     console.log('Nenhum lead pendente em config/leads.csv.');
@@ -182,7 +209,7 @@ async function runSender({ ignoreWindow = false } = {}) {
     const timestamp = formatTimestamp();
 
     try {
-      const digits = toDigitsWithCountryCode(lead.telefone);
+      const digits = normalizePhone(lead.telefone);
       const numberId = await client.getNumberId(digits);
       if (!numberId) {
         throw new Error('numero invalido ou sem WhatsApp');
@@ -231,7 +258,33 @@ async function runSender({ ignoreWindow = false } = {}) {
   };
 }
 
+// TRAVA CONTRA DISPARO CONCORRENTE.
+// O agendador (cron, a cada 15 min) e o botao "Disparar agora" chamam o mesmo
+// runSender. Sem trava, os dois poderiam rodar ao mesmo tempo, ler a mesma
+// fila de pendentes e mandar a mesma mensagem duas vezes para o mesmo lead —
+// justamente o que nao pode acontecer. Como o painel e o agendador vivem no
+// mesmo processo (ENABLE_SCHEDULER=true), uma trava em memoria resolve.
+let disparoEmAndamento = false;
+
+function isSenderRunning() {
+  return disparoEmAndamento;
+}
+
+async function runSender(options = {}) {
+  if (disparoEmAndamento) {
+    console.log('Ja existe um disparo em andamento. Esta chamada foi ignorada.');
+    return { sent: 0, skippedReason: 'ja-rodando' };
+  }
+  disparoEmAndamento = true;
+  try {
+    return await executarDisparo(options);
+  } finally {
+    disparoEmAndamento = false;
+  }
+}
+
 module.exports = {
   runSender,
+  isSenderRunning,
   isWithinSendingWindow,
 };

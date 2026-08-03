@@ -80,6 +80,146 @@
       <pre id="raw-json"></pre>
     </details>
   </div>
+
+  <div class="card">
+    <strong>Captação automática</strong>
+    <p class="hint">
+      Quando <strong>todos os leads da fila já tiverem sido disparados</strong>, o sistema busca
+      sozinho a próxima combinação de nicho + cidade da lista abaixo. Verifica de hora em hora.
+    </p>
+    <p class="hint">
+      <strong>Por que uma lista, e não só uma busca?</strong> Repetir a mesma busca no Google Maps
+      devolve os mesmos estabelecimentos (0 leads novos) e gasta crédito do Apify à toa. A fila gira:
+      cada vez que precisa captar, usa a busca que está há mais tempo sem rodar.
+    </p>
+
+    <div id="as-msg" class="message" style="display:none;"></div>
+
+    <label>
+      <input type="checkbox" id="as-enabled" />
+      Ativar captação automática
+    </label>
+
+    <div class="window-row">
+      <label style="flex:1">
+        Intervalo mínimo entre buscas (horas)
+        <input type="number" id="as-cooldown" min="1" max="720" />
+      </label>
+      <label style="flex:1">
+        Teto de gasto no mês (US$)
+        <input type="number" id="as-maxusd" min="0" max="1000" step="0.5" />
+        <span class="hint">Acima disso ele para de buscar sozinho.</span>
+      </label>
+    </div>
+
+    <strong style="display:block;margin-top:16px">Fila de buscas</strong>
+    <div id="as-queue"></div>
+    <div class="actions">
+      <button type="button" id="as-add">+ Adicionar busca</button>
+    </div>
+
+    <div id="as-status" class="hint" style="margin-top:12px"></div>
+
+    <div class="actions">
+      <button type="button" id="as-save" class="primary">Salvar captação automática</button>
+    </div>
+  </div>
+
+<script>
+function asMsg(t, tipo) {
+  const el = document.getElementById('as-msg');
+  el.textContent = t;
+  el.className = 'message ' + (tipo || '');
+  el.style.display = t ? 'block' : 'none';
+}
+
+function asLinhaBusca(item = {}) {
+  const div = document.createElement('div');
+  div.className = 'window-row';
+  div.innerHTML =
+    '<input type="text" class="as-term" placeholder="nicho (ex: clinica de estetica)" style="flex:2" />' +
+    '<input type="text" class="as-loc" placeholder="cidade (ex: Araraquara)" style="flex:2" />' +
+    '<span class="hint as-info" style="flex:1"></span>' +
+    '<button type="button" class="remove-btn">remover</button>';
+  div.querySelector('.as-term').value = item.searchTerm || '';
+  div.querySelector('.as-loc').value = item.searchLocation || '';
+  div.querySelector('.as-info').textContent = item.lastRunAt
+    ? 'última: ' + new Date(item.lastRunAt).toLocaleDateString('pt-BR') + (item.added !== null && item.added !== undefined ? ' (+' + item.added + ')' : '')
+    : 'nunca rodou';
+  div.querySelector('.remove-btn').addEventListener('click', () => div.remove());
+  return div;
+}
+
+async function asCarregar() {
+  try {
+    const res = await fetch('/api/auto-scrape');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const c = data.config;
+    document.getElementById('as-enabled').checked = c.enabled;
+    document.getElementById('as-cooldown').value = c.cooldownHours;
+    document.getElementById('as-maxusd').value = c.maxUsdPerMonth;
+
+    const box = document.getElementById('as-queue');
+    box.innerHTML = '';
+    (c.queue.length ? c.queue : [{}]).forEach((item) => box.appendChild(asLinhaBusca(item)));
+
+    let txt = data.leadsPendentes + ' lead(s) pendente(s). ';
+    txt += data.leadsPendentes > 0
+      ? 'Enquanto houver pendentes, não busca nada novo.'
+      : 'Fila zerada — vai captar na próxima verificação (respeitando o intervalo mínimo).';
+    if (c.lastResult) {
+      txt += c.lastResult.erro
+        ? ' Última tentativa falhou: ' + c.lastResult.erro
+        : ' Última captação: +' + c.lastResult.added + ' leads de "' + c.lastResult.searchTerm + ' / ' + c.lastResult.searchLocation + '".';
+    }
+    document.getElementById('as-status').textContent = txt;
+  } catch (err) {
+    asMsg('Erro ao carregar: ' + err.message, 'error');
+  }
+}
+
+document.getElementById('as-add').addEventListener('click', () => {
+  document.getElementById('as-queue').appendChild(asLinhaBusca());
+});
+
+document.getElementById('as-save').addEventListener('click', async () => {
+  const queue = [...document.querySelectorAll('#as-queue .window-row')]
+    .map((row) => ({
+      searchTerm: row.querySelector('.as-term').value.trim(),
+      searchLocation: row.querySelector('.as-loc').value.trim(),
+    }))
+    .filter((x) => x.searchTerm && x.searchLocation);
+
+  const enabled = document.getElementById('as-enabled').checked;
+  if (enabled && !queue.length) {
+    asMsg('Adicione pelo menos uma busca (nicho + cidade) antes de ativar.', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auto-scrape', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled,
+        cooldownHours: Number(document.getElementById('as-cooldown').value),
+        maxUsdPerMonth: Number(document.getElementById('as-maxusd').value),
+        queue,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    asMsg('Captação automática salva.', 'ok');
+    asCarregar();
+  } catch (err) {
+    asMsg('Erro ao salvar: ' + err.message, 'error');
+  }
+});
+
+asCarregar();
+</script>
 </main>
 <script>
 function showMessage(el, text, type) {

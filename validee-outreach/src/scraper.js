@@ -5,18 +5,10 @@ const { ApifyClient } = require('apify-client');
 const { parse } = require('csv-parse/sync');
 const { stringify } = require('csv-stringify/sync');
 const { loadConfig } = require('./apify-config');
+const { normalizePhone, hasValidPhone } = require('./phone');
 
 const { LEADS_CSV_PATH = 'config/leads.csv' } = process.env;
 const LEADS_COLUMNS = ['nome', 'telefone', 'rating', 'endereco', 'status', 'atualizado_em'];
-
-function onlyDigits(value) {
-  return String(value || '').replace(/\D/g, '');
-}
-
-// Um telefone valido para o Brasil tem DDI+DDD+numero (10 a 13 digitos).
-function hasValidPhone(digits) {
-  return digits.length >= 10 && digits.length <= 13;
-}
 
 // O actor compass/crawler-google-places (e forks) variam levemente os nomes
 // dos campos de saida entre versoes, entao tentamos alguns aliases conhecidos.
@@ -28,7 +20,9 @@ function normalizeItem(item) {
 
   return {
     nome: nome.trim(),
-    telefone: onlyDigits(telefoneBruto),
+    // normalizePhone (mesma funcao do sender): garante que o telefone seja
+    // gravado sempre no mesmo formato, senao a deduplicacao nao pega.
+    telefone: normalizePhone(telefoneBruto),
     rating: rating !== null ? Number(rating) : null,
     endereco: endereco.trim(),
   };
@@ -50,8 +44,10 @@ function loadExistingLeads() {
   return parse(content, { columns: true, skip_empty_lines: true });
 }
 
-async function scrapeLeads() {
-  const config = loadConfig();
+// overrides permite ao auto-scrape rodar uma busca da fila sem alterar a
+// busca fixa que o usuario configurou no painel.
+async function scrapeLeads(overrides = {}) {
+  const config = { ...loadConfig(), ...overrides };
 
   if (!config.token) {
     throw new Error('Token do Apify nao configurado. Defina em /apify.html ou no .env (APIFY_TOKEN).');
@@ -78,7 +74,7 @@ async function scrapeLeads() {
   // ainda nao estao no CSV, para rodar o scraper varias vezes sem perder
   // o historico de quem ja foi contatado.
   const existingLeads = loadExistingLeads();
-  const existingPhones = new Set(existingLeads.map((l) => l.telefone));
+  const existingPhones = new Set(existingLeads.map((l) => normalizePhone(l.telefone)));
 
   let addedCount = 0;
   let duplicateCount = 0;

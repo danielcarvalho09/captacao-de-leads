@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const { runSender, isWithinSendingWindow } = require('./sender');
+const { maybeAutoScrape } = require('./auto-scrape');
 
 async function runOnce() {
   try {
@@ -21,7 +22,21 @@ function startScheduler() {
   }
   started = true;
 
-  console.log('Scheduler iniciado. Verificando a cada 15 minutos se estamos dentro de uma janela de envio permitida.');
+  console.log('Scheduler iniciado: disparo a cada 15 min (dentro da janela) e captacao automatica a cada hora (se a fila zerar).');
+
+  // Captacao automatica: de hora em hora verifica se a fila de leads zerou e,
+  // se zerou, busca a proxima combinacao nicho/cidade da fila no Apify. Todos
+  // os guardrails (cooldown, teto de custo, fila) ficam no auto-scrape.js.
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const r = await maybeAutoScrape();
+      if (r.ran) {
+        console.log(`[auto-scrape] Captacao automatica trouxe ${r.added} leads novos.`);
+      }
+    } catch (err) {
+      console.error('[auto-scrape] Erro inesperado:', err.message);
+    }
+  });
 
   cron.schedule('*/15 * * * *', async () => {
     const now = new Date();

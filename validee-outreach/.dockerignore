@@ -11,3 +11,4 @@ config/leads.csv
 config/log-envios.csv
 config/settings.json
 config/apify-config.json
+config/auto-scrape.json
