@@ -468,3 +468,21 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('Erro nao tratado (uncaughtException):', err);
 });
+
+// O EasyPanel manda SIGTERM para parar o container antes de um novo deploy.
+// Sem isto, o processo Node e derrubado sem chance de fechar o Chrome, e o
+// SingletonLock fica preso no volume — o container seguinte (hostname
+// diferente) se recusa a abrir o perfil ("profile appears to be in use by
+// another Chromium process ... on another computer"). Fechando o client aqui,
+// o Chrome remove o proprio lock ao sair.
+async function encerrarComCalma(sinal) {
+  console.log(`Recebido ${sinal}. Encerrando o cliente do WhatsApp antes de sair...`);
+  try {
+    await whatsapp.destroyClient();
+  } catch (err) {
+    console.warn('Erro ao encerrar o WhatsApp durante o shutdown:', err.message);
+  }
+  process.exit(0);
+}
+process.on('SIGTERM', () => encerrarComCalma('SIGTERM'));
+process.on('SIGINT', () => encerrarComCalma('SIGINT'));

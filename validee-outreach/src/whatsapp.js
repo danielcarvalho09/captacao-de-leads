@@ -25,7 +25,58 @@ function onStateChange(callback) {
   return () => emitter.off('change', callback);
 }
 
+// O Chrome grava SingletonLock/SingletonCookie/SingletonSocket no perfil com
+// o hostname da maquina. Num container isso vira armadilha: se o container e
+// morto sem shutdown limpo (deploy, restart, OOM), o lock fica no volume
+// persistente e o container seguinte — que tem outro hostname — se recusa a
+// abrir com "The profile appears to be in use by another Chromium process ...
+// on another computer".
+// Como no nosso caso so existe um processo usando este perfil, um lock
+// encontrado no boot e sempre orfao e pode ser removido com seguranca.
+function limparLockOrfaoDoChrome() {
+  const base = path.resolve(process.cwd(), '.wwebjs_auth');
+  if (!fs.existsSync(base)) {
+    return;
+  }
+
+  const arquivosDeLock = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+  let removidos = 0;
+
+  const varrer = (dir) => {
+    for (const nome of arquivosDeLock) {
+      const alvo = path.join(dir, nome);
+      try {
+        // lstat, nao existsSync: SingletonLock e um symlink que aponta para um
+        // host/PID que nao existe mais, entao existsSync devolveria false.
+        fs.lstatSync(alvo);
+        fs.unlinkSync(alvo);
+        removidos += 1;
+      } catch (err) {
+        // nao existe (ou ja foi removido): nada a fazer
+      }
+    }
+  };
+
+  varrer(base);
+  for (const entrada of fs.readdirSync(base)) {
+    const sub = path.join(base, entrada);
+    try {
+      if (fs.statSync(sub).isDirectory()) {
+        varrer(sub);
+      }
+    } catch (err) {
+      // ignora entradas ilegiveis
+    }
+  }
+
+  if (removidos) {
+    console.log(`Removido(s) ${removidos} lock(s) orfao(s) do Chrome deixado(s) por um container anterior.`);
+  }
+}
+
 function buildClient() {
+  limparLockOrfaoDoChrome();
+
   const client = new Client({
     authStrategy: new LocalAuth(),
     // --disable-dev-shm-usage evita crash do Chrome em containers Docker,
@@ -86,7 +137,14 @@ function startClient() {
     console.error('Erro ao inicializar cliente do WhatsApp:', err.message);
     clientInstance = null;
     readyPromise = null;
-    setState({ status: 'error', qr: null, message: err.message, info: null });
+
+    // Mensagem mais clara para o erro classico de lock preso apos um deploy
+    // que matou o container sem o Chrome ter fechado direito.
+    const mensagem = /profile appears to be in use/i.test(err.message)
+      ? 'O perfil do Chrome ficou marcado como em uso por outro processo (sobra de um deploy anterior). Clique em Conectar de novo — a proxima tentativa remove o trava automaticamente.'
+      : err.message;
+
+    setState({ status: 'error', qr: null, message: mensagem, info: null });
   });
 }
 
