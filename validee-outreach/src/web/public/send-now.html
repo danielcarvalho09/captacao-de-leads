@@ -6,10 +6,21 @@
 <title>Disparar agora — Validee Outreach</title>
 <link rel="stylesheet" href="/style.css" />
 <style>
-  .resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
+  .resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 16px; }
   .resumo div { background: #f9fafb; border: 1px solid #e2e6ea; border-radius: 8px; padding: 12px; }
   .resumo .n { font-size: 22px; font-weight: 700; }
   .resumo .l { font-size: 13px; color: #6b7280; }
+
+  @media (max-width: 640px) {
+    .resumo { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+    .resumo div { padding: 10px; }
+    .resumo .n { font-size: 18px; }
+    .resumo .l { font-size: 12px; }
+  }
+
+  @media (max-width: 480px) {
+    .resumo { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>

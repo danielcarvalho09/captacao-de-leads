@@ -6,17 +6,43 @@
 <title>Relatórios — Validee Outreach</title>
 <link rel="stylesheet" href="/style.css" />
 <style>
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 14px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 14px; }
   .stat-tile { text-align: center; padding: 14px 8px; border: 1px solid var(--border); border-radius: 10px; }
   .stat-tile .value { font-size: 24px; font-weight: 700; }
   .stat-tile .label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 600; }
+
   .tag { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
   .tag-enviado { background: #e7f7ee; color: var(--ok); }
   .tag-erro { background: #fdecee; color: var(--danger); }
+
   .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+
+  @media (max-width: 640px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .stat-tile { padding: 12px 6px; }
+    .stat-tile .value { font-size: 20px; }
+    .stat-tile .label { font-size: 11px; }
+
+    table { font-size: 12px; }
+    th, td { padding: 6px 4px; }
+  }
+
+  @media (max-width: 480px) {
+    .stat-grid { grid-template-columns: 1fr; }
+
+    /* Hide columns on very small screens for recent table */
+    #recent-body tr td:nth-child(2),
+    #recent-body tr td:nth-child(3),
+    #recent-body thead tr th:nth-child(2),
+    #recent-body thead tr th:nth-child(3) {
+      display: none;
+    }
+  }
 </style>
 </head>
 <body>

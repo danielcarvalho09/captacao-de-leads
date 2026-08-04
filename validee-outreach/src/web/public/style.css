@@ -25,28 +25,50 @@ nav {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 14px 24px;
+  padding: 14px 16px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
 }
 
 nav .brand {
   font-weight: 700;
-  margin-right: 24px;
+  margin-right: 16px;
   color: var(--primary);
+  flex-shrink: 0;
+  font-size: 14px;
 }
 
 nav a {
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
   text-decoration: none;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 nav a:hover { background: var(--bg); color: var(--text); }
 nav a.active { background: var(--primary); color: #fff; }
+
+@media (max-width: 640px) {
+  nav {
+    padding: 12px 12px;
+    gap: 2px;
+  }
+
+  nav .brand {
+    margin-right: 12px;
+    font-size: 13px;
+  }
+
+  nav a {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
 
 main {
   max-width: 720px;
@@ -57,12 +79,29 @@ main {
 h1 { font-size: 22px; margin-bottom: 4px; }
 p.subtitle { color: var(--muted); margin-top: 0; margin-bottom: 24px; }
 
+@media (max-width: 640px) {
+  main {
+    padding: 20px 12px 60px;
+  }
+
+  h1 { font-size: 18px; }
+  p.subtitle { font-size: 14px; margin-bottom: 16px; }
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 20px;
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 16px;
+    margin-bottom: 16px;
+    border-radius: 10px;
+  }
 }
 
 label {
@@ -88,6 +127,16 @@ input[type="text"], input[type="number"], input[type="time"], textarea {
 
 textarea { resize: vertical; min-height: 110px; }
 
+@media (max-width: 640px) {
+  input[type="text"], input[type="number"], input[type="time"], textarea {
+    padding: 12px 12px;
+    font-size: 16px;
+    border-radius: 6px;
+  }
+
+  textarea { min-height: 100px; }
+}
+
 .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
 button {
@@ -111,7 +160,19 @@ button.secondary:hover { background: var(--bg); }
 
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.actions { display: flex; gap: 10px; margin-top: 18px; }
+.actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  button {
+    padding: 12px 16px;
+    font-size: 14px;
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .actions { gap: 8px; margin-top: 14px; }
+  .actions button, .actions a button { flex: 1; min-width: 120px; }
+}
 
 .status-badge {
   display: inline-flex;
@@ -140,14 +201,26 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .qr-box img { width: 220px; height: 220px; border: 1px solid var(--border); border-radius: 12px; padding: 8px; background: #fff; }
 
+@media (max-width: 640px) {
+  .qr-box img { width: 180px; height: 180px; }
+}
+
 .window-row {
   display: flex;
   gap: 10px;
   align-items: flex-end;
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 .window-row:last-of-type { border-bottom: none; }
+
+@media (max-width: 640px) {
+  .window-row {
+    gap: 8px;
+    padding: 10px 0;
+  }
+}
 
 .days-picker { display: flex; gap: 4px; flex-wrap: wrap; }
 .days-picker label {
@@ -162,14 +235,27 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   width: 34px;
 }
 
+@media (max-width: 640px) {
+  .days-picker { gap: 6px; }
+  .days-picker label { width: 36px; font-size: 12px; gap: 5px; }
+}
+
 .message {
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 13px;
   margin-top: 14px;
+  word-break: break-word;
 }
 .message.ok { background: #e7f7ee; color: var(--ok); }
 .message.error { background: #fdecee; color: var(--danger); }
+
+@media (max-width: 640px) {
+  .message {
+    padding: 12px 12px;
+    font-size: 13px;
+  }
+}
 
 .progress-bar {
   height: 10px;
@@ -183,7 +269,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .progress-bar-fill.danger { background: var(--danger); }
 
 details { margin-top: 16px; }
-details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+details summary { cursor: pointer; font-size: 13px; color: var(--muted); user-select: none; }
 pre {
   background: #0f1115;
   color: #d5d8dd;
@@ -192,6 +278,15 @@ pre {
   overflow-x: auto;
   font-size: 12px;
   margin-top: 10px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .remove-btn { color: var(--danger); background: none; border: none; font-size: 13px; cursor: pointer; padding: 6px; }
+
+@media (max-width: 640px) {
+  pre {
+    font-size: 11px;
+    padding: 12px;
+    margin-top: 8px;
+  }
+}
